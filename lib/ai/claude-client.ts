@@ -47,7 +47,28 @@ export async function callClaude({
   });
 
   const text = extractTextFromMessage(message);
-  const content = parseJsonFromClaudeText(text);
+  let content: unknown;
+  try {
+    content = parseJsonFromClaudeText(text);
+  } catch (e) {
+    // Важно: логируем сырой ответ, чтобы видеть, что реально присылает модель.
+    console.log("[callClaude] Raw model text (parse failed):\n", text);
+
+    // Мягкий fallback: вырезаем JSON между первой { и последней }.
+    try {
+      const start = text.indexOf("{");
+      const end = text.lastIndexOf("}");
+      if (start >= 0 && end > start) {
+        const sliced = text.slice(start, end + 1);
+        content = JSON.parse(sliced);
+      } else {
+        throw e;
+      }
+    } catch {
+      // Пробрасываем исходную ошибку парсинга (с понятным текстом из parseJsonFromClaudeText).
+      throw e;
+    }
+  }
 
   const input = message.usage?.input_tokens ?? 0;
   const output = message.usage?.output_tokens ?? 0;

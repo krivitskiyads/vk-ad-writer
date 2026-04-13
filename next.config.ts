@@ -1,16 +1,10 @@
 import type { NextConfig } from "next";
-import { homedir } from "node:os";
-import { join } from "node:path";
 
 /**
- * Проект в iCloud Drive → гонки записи и compaction Turbopack в `.next`.
- * В dev кладём сборку в локальный кэш вне синхронизации; `next build` по-прежнему использует `./.next`.
+ * Сборка всегда в `./.next` — так `rm -rf .next` реально сбрасывает dev-кэш.
+ * Вынесенный в ~/.cache distDir давал пустые manifest при гонках записи и ломал страницы с 500.
  */
-const devDistDir = join(homedir(), ".cache", "vk-ad-writer-next", ".next");
-
 const nextConfig: NextConfig = {
-  distDir: process.env.NODE_ENV === "production" ? ".next" : devDistDir,
-  /** Явная заготовка под Turbopack, чтобы не конфликтовало с кастомным `webpack` в Next 16. */
   turbopack: {},
   webpack: (config, { dev }) => {
     if (dev) {

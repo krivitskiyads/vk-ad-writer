@@ -1,0 +1,21 @@
+{"timestamp":"00:00:02.380","source":"Server","level":"LOG","message":""}
+{"timestamp":"00:00:02.385","source":"Server","level":"ERROR","message":"[browser] \"\\u001b[31m⨯ unhandledRejection: i: Failed to connect to MetaMask\\u001b[39m\""}
+{"timestamp":"00:00:02.385","source":"Browser","level":"ERROR","message":"\u001b[31m⨯ unhandledRejection: i: Failed to connect to MetaMask\u001b[39m"}
+{"timestamp":"00:00:02.394","source":"Server","level":"WARN","message":"⚠ Fast Refresh had to perform a full reload. Read more: https://nextjs.org/docs/messages/fast-refresh-reload"}
+{"timestamp":"00:00:03.676","source":"Server","level":"WARN","message":"⚠ Fast Refresh had to perform a full reload. Read more: https://nextjs.org/docs/messages/fast-refresh-reload"}
+{"timestamp":"00:00:05.280","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
+{"timestamp":"00:00:10.180","source":"Server","level":"LOG","message":"[callClaude] Raw model text:\n \"Я вижу, что ты упомянул файлы двух воронок, но сами файлы не были прикреплены к сообщению — я получил только текстовое описание.\\n\\nПожалуйста, вставь содержимое файлов прямо в чат — скопируй и пришли текст из обоих документов, и я сразу сделаю полный анализ.\""}
+{"timestamp":"00:00:10.292","source":"Server","level":"ERROR","message":"[analyze] Error: Не удалось разобрать JSON из ответа модели"}
+{"timestamp":"00:00:14.251","source":"Browser","level":"ERROR","message":"unhandledRejection: i: Failed to connect to MetaMask"}
+{"timestamp":"00:00:14.252","source":"Server","level":"ERROR","message":"[browser] \"\\u001b[31m⨯ unhandledRejection: i: Failed to connect to MetaMask\\u001b[39m\""}
+{"timestamp":"00:00:14.252","source":"Browser","level":"ERROR","message":"\u001b[31m⨯ unhandledRejection: i: Failed to connect to MetaMask\u001b[39m"}
+{"timestamp":"00:00:16.107","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
+{"timestamp":"00:00:20.094","source":"Server","level":"LOG","message":"[callClaude] Raw model text:\n \"Я вижу, что ты упомянул файлы двух воронок, но сами файлы не прикреплены к сообщению — я не получил их содержимое.\\n\\nПожалуйста, вставь текст из этих файлов прямо в чат — скопируй и пришли содержимое обеих воронок, и я сразу сделаю полный анализ.\""}
+{"timestamp":"00:00:20.140","source":"Server","level":"ERROR","message":"[analyze] Error: Не удалось разобрать JSON из ответа модели"}
+{"timestamp":"00:00:25.734","source":"Browser","level":"ERROR","message":"unhandledRejection: i: Failed to connect to MetaMask"}
+{"timestamp":"00:00:25.734","source":"Server","level":"ERROR","message":"[browser] \"\\u001b[31m⨯ unhandledRejection: i: Failed to connect to MetaMask\\u001b[39m\""}
+{"timestamp":"00:00:25.734","source":"Browser","level":"ERROR","message":"\u001b[31m⨯ unhandledRejection: i: Failed to connect to MetaMask\u001b[39m"}
+{"timestamp":"00:00:55.718","source":"Server","level":"LOG","message":"[callClaude] Raw model text:\n \"Я вижу, что ты упомянул файлы двух воронок, но сами файлы не были прикреплены к сообщению — я не получил их содержимое.\\n\\nПожалуйста, вставь текст из этих файлов прямо в сообщение (скопируй и вставь содержимое), и я сразу сделаю полный анализ.\""}
+{"timestamp":"00:00:55.783","source":"Server","level":"ERROR","message":"[analyze] Error: Не удалось разобрать JSON из ответа модели"}
+{"timestamp":"00:00:56.157","source":"Server","level":"LOG","message":"[callClaude] Raw model text:\n \"Я вижу, что ты упомянул файлы двух воронок, но сами файлы не прикреплены к сообщению — я не получил их содержимое.\\n\\nПожалуйста, вставь текст из этих файлов прямо в чат — скопируй и пришли содержимое обеих воронок, и я сразу сделаю полный анализ.\""}
+{"timestamp":"00:00:56.183","source":"Server","level":"ERROR","message":"[analyze] Error: Не удалось разобрать JSON из ответа модели"}
