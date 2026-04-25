@@ -21,7 +21,7 @@ import {
   trafficDestinationLabel,
   type GenerationSettings,
 } from "@/lib/generation-settings";
-import { isProjectAnalysis } from "@/lib/types/project-analysis";
+import { toProjectAnalysis } from "@/lib/types/project-analysis";
 import type { GeneratedAdText } from "@/lib/types/generated-texts";
 const STORAGE_KEY_ANALYSIS = "project_analysis";
 const STORAGE_KEY_SELECTED_SEGMENTS = "selected_segments";
@@ -51,8 +51,20 @@ function formatLabel(tf: string) {
   return tf === "long" ? "Длинный" : "Короткий";
 }
 
-function buildCopyPayload(t: GeneratedAdText) {
-  return [t.headline, "", t.body, "", t.cta].filter(Boolean).join("\n");
+function buildCopyPayload(t: GeneratedAdText, index?: number) {
+  const header = index !== undefined ? `=== Текст ${index + 1} ===` : "";
+  const parts = [
+    header,
+    `Заголовок: ${t.headline}`,
+    "",
+    t.body,
+    "",
+    `CTA: ${t.cta}`,
+    `Кнопка: ${t.cta_button}`,
+    `Сегмент: ${t.segment_name}`,
+    `Подход: ${t.approach}`,
+  ].filter(Boolean);
+  return parts.join("\n");
 }
 
 export function ProjectTextsView({ projectId }: ProjectTextsViewProps) {
@@ -75,8 +87,8 @@ export function ProjectTextsView({ projectId }: ProjectTextsViewProps) {
 
       try {
         const analysisRaw = localStorage.getItem(STORAGE_KEY_ANALYSIS);
-        const analysis = readJson<unknown>(analysisRaw);
-        if (!isProjectAnalysis(analysis)) {
+        const analysis = toProjectAnalysis(readJson<unknown>(analysisRaw));
+        if (!analysis) {
           throw new Error("Нет анализа проекта. Пройдите шаг анализа.");
         }
 
@@ -134,6 +146,7 @@ export function ProjectTextsView({ projectId }: ProjectTextsViewProps) {
             textFormat: gs.textFormat,
             textCount: countForRequest,
             customWishes: gs.customWishes ?? "",
+            model: gs.model ?? "claude-sonnet-4-6",
             referenceTexts,
             feedback: feedbackText,
             existingTexts: existingForFeedback,
@@ -201,7 +214,9 @@ export function ProjectTextsView({ projectId }: ProjectTextsViewProps) {
       toast.message("Ничего не выбрано");
       return;
     }
-    const payload = chosen.map(buildCopyPayload).join("\n---\n");
+    const payload = chosen
+      .map((t, i) => buildCopyPayload(t, i))
+      .join("\n\n" + "─".repeat(50) + "\n\n");
     try {
       await navigator.clipboard.writeText(payload);
       toast.success("Скопировано");
@@ -216,7 +231,9 @@ export function ProjectTextsView({ projectId }: ProjectTextsViewProps) {
       toast.message("Ничего не выбрано");
       return;
     }
-    const payload = chosen.map(buildCopyPayload).join("\n---\n");
+    const payload = chosen
+      .map((t, i) => buildCopyPayload(t, i))
+      .join("\n\n" + "─".repeat(50) + "\n\n");
     const blob = new Blob([payload], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -228,7 +245,7 @@ export function ProjectTextsView({ projectId }: ProjectTextsViewProps) {
 
   if (loading && texts.length === 0) {
     return (
-      <div className="flex min-h-[320px] flex-col items-center justify-center gap-4 rounded-xl border border-dashed bg-card/50 px-6 py-16">
+      <div className="border-border bg-muted/30 flex min-h-[320px] flex-col items-center justify-center gap-4 rounded-[12px] border border-dashed px-6 py-16">
         <Loader2 className="text-primary size-10 animate-spin" aria-hidden />
         <p className="text-foreground text-center text-base font-medium">
           Генерируем тексты...
@@ -244,8 +261,8 @@ export function ProjectTextsView({ projectId }: ProjectTextsViewProps) {
     return (
       <div className="space-y-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Тексты</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
+          <h1 className="notion-page-title">Тексты</h1>
+          <p className="notion-page-subtitle">
             Не удалось сгенерировать тексты
           </p>
         </div>
@@ -271,8 +288,8 @@ export function ProjectTextsView({ projectId }: ProjectTextsViewProps) {
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Тексты</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
+          <h1 className="notion-page-title">Тексты</h1>
+          <p className="notion-page-subtitle">
             Выберите варианты и скопируйте в работу
           </p>
         </div>
@@ -283,6 +300,24 @@ export function ProjectTextsView({ projectId }: ProjectTextsViewProps) {
               {selectedCount} из {texts.length}
             </span>
           </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              if (selectedCount === texts.length) {
+                setSelected({});
+              } else {
+                const all: Record<string, boolean> = {};
+                texts.forEach((t) => {
+                  all[t.id] = true;
+                });
+                setSelected(all);
+              }
+            }}
+          >
+            {selectedCount === texts.length ? "Снять всё" : "Выбрать все"}
+          </Button>
           <Button type="button" variant="outline" onClick={copySelected}>
             Копировать выбранные
           </Button>
@@ -304,7 +339,7 @@ export function ProjectTextsView({ projectId }: ProjectTextsViewProps) {
         {texts.map((t) => {
           const open = expanded[t.id] === true;
           return (
-            <Card key={t.id} className="border-border/80 shadow-sm">
+            <Card key={t.id} className="border-border">
               <CardHeader className="space-y-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-start gap-3">
@@ -325,7 +360,9 @@ export function ProjectTextsView({ projectId }: ProjectTextsViewProps) {
                     </div>
                   </div>
                 </div>
-                <CardTitle className="text-xl leading-snug">{t.headline}</CardTitle>
+                <CardTitle className="text-[1.38rem] font-bold leading-snug tracking-[-0.02em]">
+                  {t.headline}
+                </CardTitle>
                 <CardDescription className="text-foreground whitespace-pre-wrap">
                   {t.body}
                 </CardDescription>
@@ -391,7 +428,7 @@ export function ProjectTextsView({ projectId }: ProjectTextsViewProps) {
         })}
       </div>
 
-      <Card className="border-border/80 shadow-sm">
+      <Card className="border-border">
         <CardHeader>
           <CardTitle>Обратная связь</CardTitle>
           <CardDescription>

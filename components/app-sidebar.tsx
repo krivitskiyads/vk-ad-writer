@@ -16,18 +16,18 @@ export function AppSidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-card">
-      <div className="flex h-16 items-center px-6">
+    <aside className="flex w-[200px] shrink-0 flex-col border-r border-[#e9e5f5] bg-[#f5f3ff]">
+      <div className="flex h-14 items-center px-5">
         <Link
           href="/projects"
-          className="text-foreground text-lg font-semibold tracking-tight"
+          className="text-[15px] font-semibold leading-tight text-[#4c1d95]"
         >
-          <span className="text-primary">Генератор</span>{" "}
-          <span className="text-foreground">Кривицкого</span>
+          <span>Генератор</span>{" "}
+          <span>Кривицкого</span>
         </Link>
       </div>
-      <Separator />
-      <nav className="flex flex-1 flex-col gap-1 p-3">
+      <Separator className="bg-[#e9e5f5]" />
+      <nav className="flex flex-1 flex-col gap-0.5 p-2.5">
         {nav.map(({ href, label, icon: Icon }) => {
           const active =
             href === "/projects"
@@ -39,10 +39,10 @@ export function AppSidebar() {
               key={href}
               href={href}
               className={cn(
-                "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                "flex items-center gap-2.5 rounded-md px-3 py-2 text-[14px] font-medium transition-colors",
                 active
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  ? "border-l-[3px] border-[#7c3aed] bg-[rgba(124,58,237,0.08)] text-[#6d28d9]"
+                  : "text-[#9ca3af] hover:bg-[#f9fafb] hover:text-[#374151]"
               )}
             >
               <Icon className="size-4 shrink-0" aria-hidden />

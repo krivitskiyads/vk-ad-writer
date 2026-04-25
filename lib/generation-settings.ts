@@ -1,5 +1,28 @@
 export const STORAGE_KEY_GENERATION_SETTINGS = "generation_settings";
 
+export type ClaudeModel =
+  | "claude-haiku-4-5-20251001"
+  | "claude-sonnet-4-6"
+  | "claude-opus-4-6";
+
+export const MODEL_OPTIONS = [
+  {
+    value: "claude-haiku-4-5-20251001" as ClaudeModel,
+    label: "Haiku 4.5 — быстрый, экономичный",
+    price: "~8 ₽/проект",
+  },
+  {
+    value: "claude-sonnet-4-6" as ClaudeModel,
+    label: "Sonnet 4.6 — баланс цены и качества",
+    price: "~26 ₽/проект",
+  },
+  {
+    value: "claude-opus-4-6" as ClaudeModel,
+    label: "Opus 4.6 — максимальное качество",
+    price: "~43 ₽/проект",
+  },
+] as const;
+
 export type TrafficDestination =
   | "vk_lead"
   | "senler"
@@ -17,6 +40,7 @@ export type GenerationSettings = {
   textFormat: TextFormat;
   textCount: number;
   customWishes: string;
+  model?: ClaudeModel;
 };
 
 export const TRAFFIC_OPTIONS: Array<{

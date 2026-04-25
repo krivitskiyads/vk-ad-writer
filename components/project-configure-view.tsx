@@ -24,15 +24,18 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  MODEL_OPTIONS,
   STORAGE_KEY_GENERATION_SETTINGS,
   TEXT_FORMAT_OPTIONS,
   TRAFFIC_OPTIONS,
+  type ClaudeModel,
   type GenerationSettings,
   type TextFormat,
   type TrafficDestination,
 } from "@/lib/generation-settings";
-import { isProjectAnalysis } from "@/lib/types/project-analysis";
+import { toProjectAnalysis } from "@/lib/types/project-analysis";
 import type { ProjectAnalysis } from "@/lib/types/project-analysis";
+import { cn } from "@/lib/utils";
 
 const STORAGE_KEY_ANALYSIS = "project_analysis";
 const STORAGE_KEY_SELECTED_SEGMENTS = "selected_segments";
@@ -58,6 +61,7 @@ export function ProjectConfigureView({ projectId }: ProjectConfigureViewProps) {
 
   const [traffic, setTraffic] = useState<TrafficDestination>("vk_lead");
   const [format, setFormat] = useState<TextFormat>("mixed");
+  const [model, setModel] = useState<ClaudeModel>("claude-sonnet-4-6");
   const [count, setCount] = useState<string>("5");
   const [wishes, setWishes] = useState("");
 
@@ -65,8 +69,9 @@ export function ProjectConfigureView({ projectId }: ProjectConfigureViewProps) {
     try {
       const aRaw = localStorage.getItem(STORAGE_KEY_ANALYSIS);
       const parsedA = readJson<unknown>(aRaw);
-      if (isProjectAnalysis(parsedA)) {
-        setAnalysis(parsedA);
+      const normalizedA = toProjectAnalysis(parsedA);
+      if (normalizedA) {
+        setAnalysis(normalizedA);
       }
 
       const selRaw = localStorage.getItem(STORAGE_KEY_SELECTED_SEGMENTS);
@@ -80,6 +85,7 @@ export function ProjectConfigureView({ projectId }: ProjectConfigureViewProps) {
       if (gs) {
         if (gs.trafficDestination) setTraffic(gs.trafficDestination);
         if (gs.textFormat) setFormat(gs.textFormat);
+        if (gs.model) setModel(gs.model);
         if (typeof gs.textCount === "number") setCount(String(gs.textCount));
         if (typeof gs.customWishes === "string") setWishes(gs.customWishes);
       }
@@ -97,6 +103,7 @@ export function ProjectConfigureView({ projectId }: ProjectConfigureViewProps) {
       textFormat: format,
       textCount,
       customWishes: wishes,
+      model,
     };
 
     try {
@@ -107,7 +114,7 @@ export function ProjectConfigureView({ projectId }: ProjectConfigureViewProps) {
     } catch {
       // ignore
     }
-  }, [traffic, format, count, wishes]);
+  }, [traffic, format, count, wishes, model]);
 
   const selectedSegments = useMemo(() => {
     if (!analysis) return [];
@@ -120,15 +127,13 @@ export function ProjectConfigureView({ projectId }: ProjectConfigureViewProps) {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Настройка генерации
-        </h1>
-        <p className="text-muted-foreground mt-1 text-sm">
+        <h1 className="notion-page-title">Настройка генерации</h1>
+        <p className="notion-page-subtitle">
           Задайте параметры перед генерацией рекламных текстов
         </p>
       </div>
 
-      <Card className="border-border/80 shadow-sm">
+      <Card className="border-border">
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <CardTitle>Выбранные сегменты</CardTitle>
@@ -158,7 +163,7 @@ export function ProjectConfigureView({ projectId }: ProjectConfigureViewProps) {
         </CardContent>
       </Card>
 
-      <Card className="border-border/80 shadow-sm">
+      <Card className="border-border">
         <CardHeader>
           <CardTitle>Куда ведём трафик?</CardTitle>
           <CardDescription>Это влияет на CTA и тональность</CardDescription>
@@ -172,7 +177,13 @@ export function ProjectConfigureView({ projectId }: ProjectConfigureViewProps) {
             {TRAFFIC_OPTIONS.map((opt) => (
               <label
                 key={opt.value}
-                className="hover:bg-muted/50 flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2"
+                className={[
+                  "flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 transition-colors",
+                  "hover:bg-[#f9fafb]",
+                  opt.value === traffic
+                    ? "border-l-[3px] border-l-[#7c3aed] bg-[#f5f3ff]"
+                    : "border-border bg-card",
+                ].join(" ")}
               >
                 <RadioGroupItem value={opt.value} />
                 <span className="text-sm">{opt.label}</span>
@@ -182,7 +193,7 @@ export function ProjectConfigureView({ projectId }: ProjectConfigureViewProps) {
         </CardContent>
       </Card>
 
-      <Card className="border-border/80 shadow-sm">
+      <Card className="border-border">
         <CardHeader>
           <CardTitle>Формат текстов</CardTitle>
           <CardDescription>Длина основного текста объявления</CardDescription>
@@ -196,7 +207,13 @@ export function ProjectConfigureView({ projectId }: ProjectConfigureViewProps) {
             {TEXT_FORMAT_OPTIONS.map((opt) => (
               <label
                 key={opt.value}
-                className="hover:bg-muted/50 flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2"
+                className={[
+                  "flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 transition-colors",
+                  "hover:bg-[#f9fafb]",
+                  opt.value === format
+                    ? "border-l-[3px] border-l-[#7c3aed] bg-[#f5f3ff]"
+                    : "border-border bg-card",
+                ].join(" ")}
               >
                 <RadioGroupItem value={opt.value} />
                 <span className="text-sm">{opt.label}</span>
@@ -207,6 +224,38 @@ export function ProjectConfigureView({ projectId }: ProjectConfigureViewProps) {
       </Card>
 
       <Card className="border-border/80 shadow-sm">
+        <CardHeader>
+          <CardTitle>Модель Claude</CardTitle>
+          <CardDescription>Влияет на качество текстов и стоимость</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <RadioGroup
+            value={model}
+            onValueChange={(v) => setModel(v as ClaudeModel)}
+            className="grid gap-2"
+          >
+            {MODEL_OPTIONS.map((opt) => (
+              <label
+                key={opt.value}
+                className={cn(
+                  "flex cursor-pointer items-center justify-between gap-3 rounded-lg border px-3 py-2",
+                  model === opt.value
+                    ? "border-primary/50 bg-primary/5 border-l-[3px] border-l-primary"
+                    : "hover:bg-muted/50"
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <RadioGroupItem value={opt.value} />
+                  <span className="text-sm">{opt.label}</span>
+                </div>
+                <span className="text-muted-foreground text-xs">{opt.price}</span>
+              </label>
+            ))}
+          </RadioGroup>
+        </CardContent>
+      </Card>
+
+      <Card className="border-border">
         <CardHeader>
           <CardTitle>Сколько текстов?</CardTitle>
           <CardDescription>От 1 до 10</CardDescription>
@@ -233,7 +282,7 @@ export function ProjectConfigureView({ projectId }: ProjectConfigureViewProps) {
         </CardContent>
       </Card>
 
-      <Card className="border-border/80 shadow-sm">
+      <Card className="border-border">
         <CardHeader>
           <CardTitle>Пожелания (необязательно)</CardTitle>
           <CardDescription>Любые уточнения по стилю и акцентам</CardDescription>
@@ -265,6 +314,7 @@ export function ProjectConfigureView({ projectId }: ProjectConfigureViewProps) {
               textFormat: format,
               textCount,
               customWishes: wishes,
+              model,
             };
 
             try {

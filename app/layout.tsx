@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist_Mono, Inter } from "next/font/google";
 
 import { AppShell } from "@/components/app-shell";
 import { Providers } from "@/components/providers";
@@ -7,9 +7,10 @@ import { Toaster } from "@/components/ui/sonner";
 
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const inter = Inter({
+  variable: "--font-sans",
   subsets: ["latin", "cyrillic"],
+  display: "swap",
 });
 
 const geistMono = Geist_Mono({
@@ -28,10 +29,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ru" suppressHydrationWarning>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} min-h-full antialiased`}
-      >
+    <html lang="ru" className={inter.variable} suppressHydrationWarning>
+      <body className={`${geistMono.variable} min-h-full`}>
         <Providers>
           <AppShell>{children}</AppShell>
           <Toaster position="top-right" richColors closeButton />

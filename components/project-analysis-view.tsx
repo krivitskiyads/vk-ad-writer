@@ -18,7 +18,8 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import {
-  isProjectAnalysis,
+  pickAnalysisFromApiResponse,
+  toProjectAnalysis,
   type AnalysisSegment,
   type ProjectAnalysis,
 } from "@/lib/types/project-analysis";
@@ -28,6 +29,18 @@ const STORAGE_KEY_DESCRIPTION = "project_description";
 const STORAGE_KEY_PROJECT_FILES_CONTENT = "project_files_content";
 const STORAGE_KEY_SELECTED_SEGMENTS = "selected_segments";
 const STORAGE_KEY_ANALYSIS = "project_analysis";
+
+const ANALYZE_FETCH_TIMEOUT_MS = 180_000;
+
+function analyzeFetchAbortSignal(): AbortSignal | undefined {
+  if (
+    typeof AbortSignal !== "undefined" &&
+    typeof AbortSignal.timeout === "function"
+  ) {
+    return AbortSignal.timeout(ANALYZE_FETCH_TIMEOUT_MS);
+  }
+  return undefined;
+}
 
 type ProjectAnalysisViewProps = {
   projectId: string;
@@ -66,7 +79,7 @@ function priorityBadgeVariant(
 function BusinessCard({ analysis }: { analysis: ProjectAnalysis }) {
   const b = analysis.business;
   return (
-    <Card className="border-border/80 shadow-sm">
+    <Card className="border-border">
       <CardHeader>
         <CardTitle>О бизнесе</CardTitle>
         <CardDescription>Ниша, география и ключевые тезисы</CardDescription>
@@ -246,8 +259,29 @@ export function ProjectAnalysisView({ projectId }: ProjectAnalysisViewProps) {
           description: desc,
           project_files_content: projectFilesContent,
         }),
+        signal: analyzeFetchAbortSignal(),
       });
-      const data: unknown = await res.json();
+
+      const rawText = await res.text();
+      console.log("[analyze] HTTP response (full, before JSON.parse)", {
+        url: res.url,
+        status: res.status,
+        statusText: res.statusText,
+        ok: res.ok,
+        contentType: res.headers.get("content-type"),
+        bodyLength: rawText.length,
+        body: rawText,
+      });
+
+      let data: unknown;
+      try {
+        data = rawText.length ? JSON.parse(rawText) : null;
+      } catch (parseErr) {
+        console.error("[analyze] JSON.parse failed", parseErr);
+        throw new Error("Ответ сервера не является корректным JSON");
+      }
+
+      console.log("[analyze] data (parsed)", data);
 
       if (!res.ok) {
         const msg =
@@ -260,20 +294,36 @@ export function ProjectAnalysisView({ projectId }: ProjectAnalysisViewProps) {
         throw new Error(msg);
       }
 
-      if (
-        typeof data === "object" &&
-        data !== null &&
-        "analysis" in data &&
-        isProjectAnalysis((data as { analysis: unknown }).analysis)
-      ) {
-        const a = (data as { analysis: ProjectAnalysis }).analysis;
-        setAnalysis(a);
+      const picked = pickAnalysisFromApiResponse(data);
+      console.log("[analyze] picked analysis candidate", picked);
+
+      const normalized = picked !== undefined ? toProjectAnalysis(picked) : null;
+
+      if (normalized) {
+        setAnalysis(normalized);
         try {
-          localStorage.setItem(STORAGE_KEY_ANALYSIS, JSON.stringify(a));
+          localStorage.setItem(
+            STORAGE_KEY_ANALYSIS,
+            JSON.stringify(normalized)
+          );
         } catch {
           // ignore
         }
       } else {
+        const pickedShape =
+          picked !== null &&
+          typeof picked === "object" &&
+          !Array.isArray(picked)
+            ? Object.keys(picked as object)
+            : null;
+        console.error("[analyze] toProjectAnalysis failed", {
+          pickedType: picked === null ? "null" : typeof picked,
+          pickedKeys: pickedShape,
+          rawDataKeys:
+            typeof data === "object" && data !== null && !Array.isArray(data)
+              ? Object.keys(data as object)
+              : null,
+        });
         throw new Error("Некорректный ответ сервера");
       }
 
@@ -301,7 +351,12 @@ export function ProjectAnalysisView({ projectId }: ProjectAnalysisViewProps) {
         /* ignore */
       }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Неизвестная ошибка";
+      const msg =
+        e instanceof Error && e.name === "AbortError"
+          ? `Превышено время ожидания ответа (${ANALYZE_FETCH_TIMEOUT_MS / 1000} с)`
+          : e instanceof Error
+            ? e.message
+            : "Неизвестная ошибка";
       setError(msg);
       toast.error(msg);
     } finally {
@@ -357,7 +412,7 @@ export function ProjectAnalysisView({ projectId }: ProjectAnalysisViewProps) {
 
   if (loading && !analysis) {
     return (
-      <div className="flex min-h-[320px] flex-col items-center justify-center gap-4 rounded-xl border border-dashed bg-card/50 px-6 py-16">
+      <div className="border-border bg-muted/30 flex min-h-[320px] flex-col items-center justify-center gap-4 rounded-[12px] border border-dashed px-6 py-16">
         <Loader2
           className="text-primary size-10 animate-spin"
           aria-hidden
@@ -376,10 +431,8 @@ export function ProjectAnalysisView({ projectId }: ProjectAnalysisViewProps) {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Анализ</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Не удалось получить анализ
-          </p>
+          <h1 className="notion-page-title">Анализ</h1>
+          <p className="notion-page-subtitle">Не удалось получить анализ</p>
         </div>
         <Card className="border-destructive/30">
           <CardHeader>
@@ -421,10 +474,8 @@ export function ProjectAnalysisView({ projectId }: ProjectAnalysisViewProps) {
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Результат анализа
-          </h1>
-          <p className="text-muted-foreground mt-1 text-sm">
+          <h1 className="notion-page-title">Результат анализа</h1>
+          <p className="notion-page-subtitle">
             Сегменты, позиционирование и риски для рекламы во ВКонтакте
           </p>
           {meta && (
@@ -459,14 +510,14 @@ export function ProjectAnalysisView({ projectId }: ProjectAnalysisViewProps) {
           <BusinessCard analysis={analysis} />
 
           <div className="space-y-4">
-            <h2 className="text-lg font-semibold">
+            <h2 className="text-[1.15rem] font-bold tracking-[-0.02em] text-foreground">
               Выберите сегменты для работы
             </h2>
             <div className="grid gap-3">
               {analysis.segments.map((seg, index) => (
                 <Card
                   key={`${seg.name}-${index}`}
-                  className="border-border/80 py-3 shadow-sm"
+                  className="border-border py-3"
                 >
                   <CardContent className="flex gap-3 px-4 py-0">
                     <Checkbox
@@ -520,7 +571,9 @@ export function ProjectAnalysisView({ projectId }: ProjectAnalysisViewProps) {
       {viewStage === "details" && (
         <>
           <div className="space-y-4">
-            <h2 className="text-lg font-semibold">Детали выбранных сегментов</h2>
+            <h2 className="text-[1.15rem] font-bold tracking-[-0.02em] text-foreground">
+              Детали выбранных сегментов
+            </h2>
             <div className="grid gap-4">
               {selectedSorted.map((segmentIndex) => {
                 const seg = analysis.segments[segmentIndex];
@@ -529,7 +582,7 @@ export function ProjectAnalysisView({ projectId }: ProjectAnalysisViewProps) {
                 return (
                   <Card
                     key={`detail-${segmentIndex}`}
-                    className="border-border/80 overflow-hidden shadow-sm"
+                    className="border-border overflow-hidden"
                   >
                     <CardHeader className="gap-3 space-y-0 pb-3">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -567,7 +620,7 @@ export function ProjectAnalysisView({ projectId }: ProjectAnalysisViewProps) {
             </div>
           </div>
 
-          <Card className="border-border/80 shadow-sm">
+          <Card className="border-border">
             <CardHeader>
               <CardTitle>Позиционирование</CardTitle>
               <CardDescription>Ключевое сообщение и выгоды</CardDescription>
@@ -607,7 +660,7 @@ export function ProjectAnalysisView({ projectId }: ProjectAnalysisViewProps) {
           {analysis.warnings.length > 0 && (
             <Card
               className={cn(
-                "border-amber-200/90 bg-amber-50 shadow-sm",
+                "border-amber-200/90 bg-amber-50 shadow-none",
                 "dark:border-amber-900 dark:bg-amber-950/40"
               )}
             >

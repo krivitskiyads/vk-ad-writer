@@ -9,20 +9,22 @@ import {
 
 export default function ProjectsPage() {
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="space-y-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Проекты</h1>
-          <p className="text-muted-foreground text-sm">
+          <h1 className="notion-page-title">Проекты</h1>
+          <p className="notion-page-subtitle">
             Рекламные тексты для ВКонтакте по вашим брифам
           </p>
         </div>
         <CreateProjectDialog />
       </div>
 
-      <Card className="border-border/80 shadow-sm">
+      <Card className="border-border">
         <CardHeader>
-          <CardTitle>Список проектов</CardTitle>
+          <CardTitle className="text-[1.38rem] font-bold tracking-[-0.02em]">
+            Список проектов
+          </CardTitle>
           <CardDescription>
             Проекты хранят брифы и сгенерированные объявления
           </CardDescription>

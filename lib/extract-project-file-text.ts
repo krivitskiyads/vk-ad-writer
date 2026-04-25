@@ -1,5 +1,4 @@
 import mammoth from "mammoth";
-import { PDFParse } from "pdf-parse";
 
 import { getFileExtension } from "@/lib/project-files";
 
@@ -9,6 +8,25 @@ export type ProjectFileTextResult =
   | { ok: true; content: string }
   | { ok: false; reason: "skipped" }
   | { ok: false; reason: "error"; message: string };
+
+async function extractTextFromPdf(file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch("/api/extract-pdf", {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    const msg = data?.error ?? "Ошибка извлечения текста из PDF";
+    throw new Error(msg);
+  }
+
+  const data = await res.json();
+  return data.text ?? "";
+}
 
 export async function extractTextFromProjectFile(
   file: File
@@ -32,21 +50,11 @@ export async function extractTextFromProjectFile(
     }
 
     if (ext === ".pdf") {
-      const data = new Uint8Array(await file.arrayBuffer());
-      const parser = new PDFParse({ data });
-      try {
-        const textResult = await parser.getText();
-        const text = textResult.text.trim();
-        await parser.destroy();
-        return { ok: true, content: text };
-      } catch (e) {
-        try {
-          await parser.destroy();
-        } catch {
-          /* ignore */
-        }
-        throw e;
+      const content = await extractTextFromPdf(file);
+      if (!content) {
+        return { ok: false, reason: "error", message: "PDF не содержит текста (возможно, это скан)" };
       }
+      return { ok: true, content };
     }
 
     return { ok: false, reason: "skipped" };

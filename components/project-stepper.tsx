@@ -29,7 +29,7 @@ export function ProjectStepper() {
   return (
     <nav
       aria-label="Этапы проекта"
-      className="border-border/80 bg-card mb-8 flex flex-wrap items-center gap-1 rounded-xl border px-4 py-3 shadow-sm"
+      className="border-border bg-card mb-8 flex flex-wrap items-center gap-1 rounded-[12px] border px-3 py-2.5 shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
     >
       {STEPS.map((step, index) => {
         const href =
@@ -51,22 +51,19 @@ export function ProjectStepper() {
             <Link
               href={href}
               className={cn(
-                "flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-                isActive && "bg-primary/10 text-primary",
-                isPast &&
-                  !isActive &&
-                  "text-emerald-800 hover:bg-emerald-50 dark:text-emerald-200 dark:hover:bg-emerald-950/40",
-                isFuture && "text-muted-foreground hover:bg-muted/80"
+                "focus-visible:ring-ring/50 flex items-center gap-2 rounded-md px-2.5 py-1.5 text-[14px] font-medium transition-colors outline-none focus-visible:ring-3",
+                isActive && "text-[#6d28d9]",
+                isPast && !isActive && "text-[#6d28d9]",
+                isFuture && "text-[#9ca3af]",
+                "hover:bg-[#f9fafb]"
               )}
             >
               <span
                 className={cn(
-                  "flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
-                  isActive && "bg-primary text-primary-foreground",
-                  isPast &&
-                    !isActive &&
-                    "bg-emerald-600 text-white dark:bg-emerald-700",
-                  isFuture && "bg-muted text-muted-foreground"
+                  "flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-bold",
+                  isActive && "bg-[#7c3aed] text-white",
+                  isPast && !isActive && "bg-[#7c3aed] text-white",
+                  isFuture && "bg-[#e5e7eb] text-[#9ca3af]"
                 )}
               >
                 {isPast && !isActive ? (

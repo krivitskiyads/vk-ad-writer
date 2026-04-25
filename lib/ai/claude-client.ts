@@ -1,8 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
 
-import { parseJsonFromClaudeText } from "@/lib/ai/parse-claude-json";
-
-const MODEL = "claude-sonnet-4-6";
 const MAX_TOKENS = 4096;
 
 export type CallClaudeResult = {
@@ -30,43 +27,62 @@ export async function callClaude({
   systemPrompt,
   userPrompt,
   temperature,
+  tool,
+  toolName,
+  model = "claude-sonnet-4-6",
 }: {
   systemPrompt: string;
   userPrompt: string;
   temperature: number;
+  tool?: Anthropic.Messages.Tool;
+  toolName?: string;
+  model?: string;
 }): Promise<CallClaudeResult> {
   const started = Date.now();
   const client = getAnthropicClient();
 
+  // Если передан tool — используем tool use для гарантированной структуры
+  const toolParams = tool && toolName
+    ? {
+        tools: [tool],
+        tool_choice: { type: "tool" as const, name: toolName },
+      }
+    : {};
+
   const message = await client.messages.create({
-    model: MODEL,
+    model,
     max_tokens: MAX_TOKENS,
     temperature,
     system: systemPrompt,
     messages: [{ role: "user", content: userPrompt }],
+    ...toolParams,
   });
 
-  const text = extractTextFromMessage(message);
-  let content: unknown;
-  try {
-    content = parseJsonFromClaudeText(text);
-  } catch (e) {
-    // Важно: логируем сырой ответ, чтобы видеть, что реально присылает модель.
-    console.log("[callClaude] Raw model text (parse failed):\n", text);
+  let content: unknown = null;
 
-    // Мягкий fallback: вырезаем JSON между первой { и последней }.
-    try {
-      const start = text.indexOf("{");
-      const end = text.lastIndexOf("}");
-      if (start >= 0 && end > start) {
-        const sliced = text.slice(start, end + 1);
-        content = JSON.parse(sliced);
-      } else {
-        throw e;
+  // Извлекаем из tool_use блока если есть
+  if (tool && toolName) {
+    for (const block of message.content) {
+      if (block.type === "tool_use" && block.name === toolName) {
+        content = block.input;
+        break;
       }
-    } catch {
-      // Пробрасываем исходную ошибку парсинга (с понятным текстом из parseJsonFromClaudeText).
-      throw e;
+    }
+  }
+
+  // Fallback: парсим текст
+  if (content === null) {
+    const text = extractTextFromMessage(message);
+    if (text.trim()) {
+      try {
+        const start = text.indexOf("{");
+        const end = text.lastIndexOf("}");
+        if (start >= 0 && end > start) {
+          content = JSON.parse(text.slice(start, end + 1));
+        }
+      } catch {
+        // ignore
+      }
     }
   }
 

@@ -2,9 +2,11 @@ import { AppSidebar } from "@/components/app-sidebar";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="bg-background flex min-h-screen">
+    <div className="bg-background text-foreground flex min-h-screen">
       <AppSidebar />
-      <main className="flex-1 overflow-auto p-6 md:p-8">{children}</main>
+      <main className="min-h-0 flex-1 overflow-auto px-6 py-8 md:px-10 md:py-10">
+        <div className="mx-auto w-full max-w-[800px]">{children}</div>
+      </main>
     </div>
   );
 }

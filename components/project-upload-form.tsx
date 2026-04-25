@@ -189,10 +189,8 @@ export function ProjectUploadForm({ projectId }: ProjectUploadFormProps) {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Загрузка материалов
-        </h1>
-        <p className="text-muted-foreground mt-1 text-sm">
+        <h1 className="notion-page-title">Загрузка материалов</h1>
+        <p className="notion-page-subtitle">
           Добавьте файлы и кратко опишите задачу — позже здесь появится отправка в
           хранилище.
         </p>
@@ -230,26 +228,29 @@ export function ProjectUploadForm({ projectId }: ProjectUploadFormProps) {
         onDrop={onDrop}
         onClick={() => inputRef.current?.click()}
         className={cn(
-          "border-border bg-card cursor-pointer rounded-xl border-2 border-dashed p-10 text-center transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-          isDragging && "border-primary bg-primary/5"
+          "cursor-pointer rounded-[12px] border border-dashed border-[#ddd6fe] bg-card p-10 text-center transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+          "hover:bg-[#f5f3ff] hover:border-[#a78bfa]",
+          isDragging && "border-[#a78bfa] bg-[#f5f3ff]"
         )}
       >
-        <div className="bg-primary/10 text-primary mx-auto mb-3 flex size-12 items-center justify-center rounded-full">
+        <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-full bg-[#f5f3ff] text-[#7c3aed]">
           <Upload className="size-6" aria-hidden />
         </div>
-        <p className="text-foreground font-medium">
+        <p className="text-foreground text-[1rem] font-semibold">
           Перетащите файлы сюда или нажмите для выбора
         </p>
-        <p className="text-muted-foreground mt-2 text-sm">
+        <p className="notion-page-subtitle mt-2 !text-sm">
           PDF, DOCX, TXT, JPG, PNG · до {formatFileSize(MAX_PROJECT_FILE_BYTES)}{" "}
           на файл
         </p>
       </div>
 
       {items.length > 0 && (
-        <Card className="border-border/80 shadow-sm">
+        <Card className="border-border">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Загруженные файлы</CardTitle>
+            <CardTitle className="text-[1.38rem] font-bold tracking-[-0.02em]">
+              Загруженные файлы
+            </CardTitle>
             <CardDescription>
               Хранятся только в этой сессии браузера
             </CardDescription>
@@ -335,9 +336,11 @@ export function ProjectUploadForm({ projectId }: ProjectUploadFormProps) {
         />
       </div>
 
-      <Card className="border-border/80 shadow-sm">
+      <Card className="border-border">
         <CardHeader>
-          <CardTitle>Примеры хороших текстов (необязательно)</CardTitle>
+          <CardTitle className="text-[1.38rem] font-bold tracking-[-0.02em]">
+            Примеры хороших текстов (необязательно)
+          </CardTitle>
           <CardDescription>
             Вставьте тексты, на которые хотите равняться — свои лучшие,
             конкурентов или из других ниш
@@ -362,9 +365,11 @@ export function ProjectUploadForm({ projectId }: ProjectUploadFormProps) {
         </CardContent>
       </Card>
 
-      <Card className="border-primary/20 bg-primary/5 border shadow-none">
+      <Card className="shadow-none border border-[#62aef0]/25 bg-[#f2f9ff]">
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Что полезно загрузить</CardTitle>
+          <CardTitle className="text-[1.1rem] font-bold">
+            Что полезно загрузить
+          </CardTitle>
           <CardDescription>
             Чем полнее контекст, тем точнее будут рекламные тексты
           </CardDescription>
