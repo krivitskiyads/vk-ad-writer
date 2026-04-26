@@ -21,7 +21,7 @@ import {
   MAX_PROJECT_FILE_BYTES,
   validateProjectFile,
 } from "@/lib/project-files";
-import { cn } from "@/lib/utils";
+import { cn, createClientId } from "@/lib/utils";
 
 const STORAGE_KEY_DESCRIPTION = "project_description";
 const STORAGE_KEY_REFERENCE_TEXTS = "project_reference_texts";
@@ -74,7 +74,7 @@ export function ProjectUploadForm({ projectId }: ProjectUploadFormProps) {
         );
         continue;
       }
-      const id = crypto.randomUUID();
+      const id = createClientId();
       next.push({ id, file, extractStatus: "pending" });
     }
     if (!next.length) return;

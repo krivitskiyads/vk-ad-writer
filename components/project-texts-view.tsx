@@ -23,6 +23,7 @@ import {
 } from "@/lib/generation-settings";
 import { toProjectAnalysis } from "@/lib/types/project-analysis";
 import type { GeneratedAdText } from "@/lib/types/generated-texts";
+import { createClientId } from "@/lib/utils";
 const STORAGE_KEY_ANALYSIS = "project_analysis";
 const STORAGE_KEY_SELECTED_SEGMENTS = "selected_segments";
 const STORAGE_KEY_REFERENCE_TEXTS = "project_reference_texts";
@@ -171,7 +172,7 @@ export function ProjectTextsView({ projectId }: ProjectTextsViewProps) {
         }
 
         const mapped: StoredText[] = nextTextsUnknown.map((t) => ({
-          id: crypto.randomUUID(),
+          id: createClientId(),
           ...(t as GeneratedAdText),
         }));
 

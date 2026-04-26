@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { createClientId } from "@/lib/utils";
 
 export function CreateProjectDialog() {
   const router = useRouter();
@@ -23,7 +24,7 @@ export function CreateProjectDialog() {
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) return;
-    const id = crypto.randomUUID();
+    const id = createClientId();
     setOpen(false);
     setName("");
     router.push(`/project/${id}/upload`);
