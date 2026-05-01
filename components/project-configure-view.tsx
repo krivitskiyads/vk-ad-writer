@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -33,12 +35,18 @@ import {
   type TextFormat,
   type TrafficDestination,
 } from "@/lib/generation-settings";
+import {
+  getGenerationSettings,
+  getProject,
+  saveGenerationSettings,
+} from "@/lib/supabase/queries";
 import { toProjectAnalysis } from "@/lib/types/project-analysis";
 import type { ProjectAnalysis } from "@/lib/types/project-analysis";
 import { cn } from "@/lib/utils";
 
 const STORAGE_KEY_ANALYSIS = "project_analysis";
 const STORAGE_KEY_SELECTED_SEGMENTS = "selected_segments";
+const STORAGE_KEY_REFERENCE_TEXTS = "project_reference_texts";
 
 type ProjectConfigureViewProps = {
   projectId: string;
@@ -56,8 +64,10 @@ function readJson<T>(raw: string | null): T | null {
 export function ProjectConfigureView({ projectId }: ProjectConfigureViewProps) {
   const router = useRouter();
 
+  const [loading, setLoading] = useState(true);
   const [analysis, setAnalysis] = useState<ProjectAnalysis | null>(null);
   const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
+  const [referenceTexts, setReferenceTexts] = useState("");
 
   const [traffic, setTraffic] = useState<TrafficDestination>("vk_lead");
   const [format, setFormat] = useState<TextFormat>("mixed");
@@ -65,35 +75,118 @@ export function ProjectConfigureView({ projectId }: ProjectConfigureViewProps) {
   const [count, setCount] = useState<string>("5");
   const [wishes, setWishes] = useState("");
 
+  // ── Загрузка: проект + настройки из Supabase, с fallback на localStorage ──
   useEffect(() => {
-    try {
-      const aRaw = localStorage.getItem(STORAGE_KEY_ANALYSIS);
-      const parsedA = readJson<unknown>(aRaw);
-      const normalizedA = toProjectAnalysis(parsedA);
-      if (normalizedA) {
-        setAnalysis(normalizedA);
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+
+      try {
+        const project = await getProject(projectId);
+        if (cancelled) return;
+        const rawAnalysis = (project as { analysis?: unknown } | null)
+          ?.analysis;
+        const normalized = toProjectAnalysis(rawAnalysis);
+        if (normalized) setAnalysis(normalized);
+
+        const rawSelected = (project as { selected_segments?: unknown } | null)
+          ?.selected_segments;
+        if (Array.isArray(rawSelected)) {
+          const sel = rawSelected.filter(
+            (i): i is number => typeof i === "number"
+          );
+          setSelectedIndices(sel);
+        }
+      } catch (e) {
+        console.error("[configure] getProject failed", e);
+        try {
+          const aRaw = localStorage.getItem(STORAGE_KEY_ANALYSIS);
+          const parsedA = readJson<unknown>(aRaw);
+          const normalizedA = toProjectAnalysis(parsedA);
+          if (normalizedA && !cancelled) setAnalysis(normalizedA);
+
+          const selRaw = localStorage.getItem(STORAGE_KEY_SELECTED_SEGMENTS);
+          const sel = readJson<number[]>(selRaw);
+          if (
+            Array.isArray(sel) &&
+            sel.every((x) => typeof x === "number") &&
+            !cancelled
+          ) {
+            setSelectedIndices(sel);
+          }
+        } catch {
+          // ignore
+        }
       }
 
-      const selRaw = localStorage.getItem(STORAGE_KEY_SELECTED_SEGMENTS);
-      const sel = readJson<number[]>(selRaw);
-      if (Array.isArray(sel) && sel.every((x) => typeof x === "number")) {
-        setSelectedIndices(sel);
+      try {
+        const settings = await getGenerationSettings(projectId);
+        if (cancelled) return;
+        if (settings) {
+          const s = settings as {
+            traffic_destination?: unknown;
+            text_format?: unknown;
+            text_count?: unknown;
+            custom_wishes?: unknown;
+            reference_texts?: unknown;
+            model?: unknown;
+          };
+          if (typeof s.traffic_destination === "string") {
+            setTraffic(s.traffic_destination as TrafficDestination);
+          }
+          if (typeof s.text_format === "string") {
+            setFormat(s.text_format as TextFormat);
+          }
+          if (typeof s.text_count === "number") {
+            setCount(String(s.text_count));
+          }
+          if (typeof s.custom_wishes === "string") setWishes(s.custom_wishes);
+          if (typeof s.reference_texts === "string") {
+            setReferenceTexts(s.reference_texts);
+          }
+          if (typeof s.model === "string") setModel(s.model as ClaudeModel);
+        } else {
+          // Если в БД нет настроек — пробуем localStorage
+          try {
+            const gsRaw = localStorage.getItem(STORAGE_KEY_GENERATION_SETTINGS);
+            const gs = readJson<Partial<GenerationSettings>>(gsRaw);
+            if (gs) {
+              if (gs.trafficDestination) setTraffic(gs.trafficDestination);
+              if (gs.textFormat) setFormat(gs.textFormat);
+              if (gs.model) setModel(gs.model);
+              if (typeof gs.textCount === "number")
+                setCount(String(gs.textCount));
+              if (typeof gs.customWishes === "string") setWishes(gs.customWishes);
+            }
+          } catch {
+            // ignore
+          }
+        }
+      } catch (e) {
+        console.error("[configure] getGenerationSettings failed", e);
       }
 
-      const gsRaw = localStorage.getItem(STORAGE_KEY_GENERATION_SETTINGS);
-      const gs = readJson<Partial<GenerationSettings>>(gsRaw);
-      if (gs) {
-        if (gs.trafficDestination) setTraffic(gs.trafficDestination);
-        if (gs.textFormat) setFormat(gs.textFormat);
-        if (gs.model) setModel(gs.model);
-        if (typeof gs.textCount === "number") setCount(String(gs.textCount));
-        if (typeof gs.customWishes === "string") setWishes(gs.customWishes);
+      // Reference texts — храним в localStorage с предыдущего шага,
+      // на configure подгружаем только если не пришло из Supabase
+      try {
+        const savedRef =
+          localStorage.getItem(STORAGE_KEY_REFERENCE_TEXTS) ?? "";
+        if (!cancelled) {
+          setReferenceTexts((prev) => (prev ? prev : savedRef));
+        }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
-    }
-  }, []);
 
+      if (!cancelled) setLoading(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+
+  // ── Локальный бэкап текущих настроек (fallback) ──
   useEffect(() => {
     const textCount = Number.parseInt(count, 10);
     if (!Number.isFinite(textCount) || textCount < 1 || textCount > 10) return;
@@ -124,6 +217,46 @@ export function ProjectConfigureView({ projectId }: ProjectConfigureViewProps) {
       .filter(Boolean);
   }, [analysis, selectedIndices]);
 
+  async function handleGenerate() {
+    const textCount = Number.parseInt(count, 10);
+    if (!Number.isFinite(textCount) || textCount < 1 || textCount > 10) {
+      return;
+    }
+
+    // Локальный снапшот (fallback)
+    try {
+      const settings: GenerationSettings = {
+        trafficDestination: traffic,
+        textFormat: format,
+        textCount,
+        customWishes: wishes,
+        model,
+      };
+      localStorage.setItem(
+        STORAGE_KEY_GENERATION_SETTINGS,
+        JSON.stringify(settings)
+      );
+    } catch {
+      // ignore
+    }
+
+    try {
+      await saveGenerationSettings(projectId, {
+        traffic_destination: traffic,
+        text_format: format,
+        text_count: textCount,
+        custom_wishes: wishes,
+        reference_texts: referenceTexts,
+        model,
+      });
+    } catch (e) {
+      console.error("[configure] saveGenerationSettings failed", e);
+      toast.error("Не удалось сохранить настройки в облако");
+    }
+
+    router.push(`/project/${projectId}/texts`);
+  }
+
   return (
     <div className="space-y-8">
       <div>
@@ -132,6 +265,13 @@ export function ProjectConfigureView({ projectId }: ProjectConfigureViewProps) {
           Задайте параметры перед генерацией рекламных текстов
         </p>
       </div>
+
+      {loading && (
+        <div className="text-muted-foreground flex items-center gap-2 text-sm">
+          <Loader2 className="size-4 animate-spin" aria-hidden />
+          Загружаем настройки…
+        </div>
+      )}
 
       <Card className="border-border">
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -303,31 +443,7 @@ export function ProjectConfigureView({ projectId }: ProjectConfigureViewProps) {
           size="lg"
           className="px-6"
           disabled={!analysis || selectedSegments.length === 0}
-          onClick={() => {
-            const textCount = Number.parseInt(count, 10);
-            if (!Number.isFinite(textCount) || textCount < 1 || textCount > 10) {
-              return;
-            }
-
-            const settings: GenerationSettings = {
-              trafficDestination: traffic,
-              textFormat: format,
-              textCount,
-              customWishes: wishes,
-              model,
-            };
-
-            try {
-              localStorage.setItem(
-                STORAGE_KEY_GENERATION_SETTINGS,
-                JSON.stringify(settings)
-              );
-            } catch {
-              // ignore
-            }
-
-            router.push(`/project/${projectId}/texts`);
-          }}
+          onClick={() => void handleGenerate()}
         >
           Сгенерировать тексты
         </Button>

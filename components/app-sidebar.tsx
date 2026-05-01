@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { FolderKanban, Settings2 } from "lucide-react";
 
 import { Separator } from "@/components/ui/separator";
+import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
 const nav = [
@@ -14,6 +15,14 @@ const nav = [
 
 export function AppSidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+
+  async function handleLogout() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push("/login");
+    router.refresh();
+  }
 
   return (
     <aside className="flex w-[200px] shrink-0 flex-col border-r border-[#e9e5f5] bg-[#f5f3ff]">
@@ -51,6 +60,16 @@ export function AppSidebar() {
           );
         })}
       </nav>
+      <Separator className="bg-[#e9e5f5]" />
+      <div className="p-2.5">
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="w-full px-3 py-2 text-left text-sm text-muted-foreground hover:text-foreground"
+        >
+          Выйти
+        </button>
+      </div>
     </aside>
   );
 }

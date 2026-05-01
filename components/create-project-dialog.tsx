@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { Plus } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -13,21 +14,35 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { createClientId } from "@/lib/utils";
+import { createProject } from "@/lib/supabase/queries";
 
 export function CreateProjectDialog() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     const trimmed = name.trim();
-    if (!trimmed) return;
-    const id = createClientId();
-    setOpen(false);
-    setName("");
-    router.push(`/project/${id}/upload`);
+    if (!trimmed || submitting) return;
+
+    setSubmitting(true);
+    try {
+      const project = await createProject(trimmed);
+      setOpen(false);
+      setName("");
+      const projectId = (project as { id: string } | null)?.id;
+      if (!projectId) throw new Error("Не удалось получить ID проекта");
+      router.push(`/project/${projectId}/upload`);
+      router.refresh();
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "Не удалось создать проект";
+      toast.error(msg);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -71,8 +86,8 @@ export function CreateProjectDialog() {
               />
             </div>
             <div className="flex justify-end pt-2">
-              <Button type="submit" disabled={!name.trim()}>
-                Создать
+              <Button type="submit" disabled={!name.trim() || submitting}>
+                {submitting ? "Создаём…" : "Создать"}
               </Button>
             </div>
           </form>

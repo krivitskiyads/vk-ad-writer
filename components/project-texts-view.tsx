@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronUp, Copy, Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -19,11 +20,24 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   STORAGE_KEY_GENERATION_SETTINGS,
   trafficDestinationLabel,
+  type ClaudeModel,
   type GenerationSettings,
+  type TextFormat,
+  type TrafficDestination,
 } from "@/lib/generation-settings";
-import { toProjectAnalysis } from "@/lib/types/project-analysis";
+import {
+  getGeneratedTexts,
+  getGenerationSettings,
+  getProject,
+  saveGeneratedTexts,
+} from "@/lib/supabase/queries";
+import {
+  toProjectAnalysis,
+  type ProjectAnalysis,
+} from "@/lib/types/project-analysis";
 import type { GeneratedAdText } from "@/lib/types/generated-texts";
 import { createClientId } from "@/lib/utils";
+
 const STORAGE_KEY_ANALYSIS = "project_analysis";
 const STORAGE_KEY_SELECTED_SEGMENTS = "selected_segments";
 const STORAGE_KEY_REFERENCE_TEXTS = "project_reference_texts";
@@ -33,6 +47,20 @@ type ProjectTextsViewProps = {
 };
 
 type StoredText = GeneratedAdText & { id: string };
+
+type LoadedContext = {
+  analysis: ProjectAnalysis;
+  selectedIndices: number[];
+  projectName?: string | null;
+  settings: {
+    trafficDestination: TrafficDestination;
+    textFormat: TextFormat;
+    textCount: number;
+    customWishes: string;
+    referenceTexts: string;
+    model: ClaudeModel;
+  };
+};
 
 function stripId(t: StoredText): GeneratedAdText {
   const { id: _id, ...rest } = t;
@@ -53,88 +81,204 @@ function formatLabel(tf: string) {
 }
 
 function buildCopyPayload(t: GeneratedAdText, index?: number) {
-  const header = index !== undefined ? `=== Текст ${index + 1} ===` : "";
-  const parts = [
-    header,
-    `Заголовок: ${t.headline}`,
-    "",
-    t.body,
-    "",
-    `CTA: ${t.cta}`,
-    `Кнопка: ${t.cta_button}`,
-    `Сегмент: ${t.segment_name}`,
-    `Подход: ${t.approach}`,
-  ].filter(Boolean);
-  return parts.join("\n");
+  const num = index !== undefined ? index + 1 : 1;
+  const separator = "═".repeat(55);
+  const fullText = [t.headline, "", t.body].join("\n");
+  return `${separator}\nТЕКСТ ${num} — «${t.approach}»\n${separator}\n\n${fullText}\n`;
+}
+
+/** Собирает контекст для генерации: сначала Supabase, fallback на localStorage. */
+async function loadContext(projectId: string): Promise<LoadedContext> {
+  let analysis: ProjectAnalysis | null = null;
+  let selectedIndices: number[] = [];
+  let projectName: string | null = null;
+
+  try {
+    const project = await getProject(projectId);
+    const n = (project as { name?: unknown } | null)?.name;
+    if (typeof n === "string" && n.trim()) projectName = n.trim();
+    const rawAnalysis = (project as { analysis?: unknown } | null)?.analysis;
+    analysis = toProjectAnalysis(rawAnalysis);
+
+    const rawSelected = (project as { selected_segments?: unknown } | null)
+      ?.selected_segments;
+    if (Array.isArray(rawSelected)) {
+      selectedIndices = rawSelected.filter(
+        (i): i is number => typeof i === "number"
+      );
+    }
+  } catch (e) {
+    console.error("[texts] getProject failed", e);
+  }
+
+  if (!analysis) {
+    const aRaw =
+      typeof window !== "undefined"
+        ? localStorage.getItem(STORAGE_KEY_ANALYSIS)
+        : null;
+    const parsed = toProjectAnalysis(readJson<unknown>(aRaw));
+    if (parsed) analysis = parsed;
+  }
+  if (selectedIndices.length === 0) {
+    const selRaw =
+      typeof window !== "undefined"
+        ? localStorage.getItem(STORAGE_KEY_SELECTED_SEGMENTS)
+        : null;
+    const sel = readJson<number[]>(selRaw);
+    if (Array.isArray(sel)) {
+      selectedIndices = sel.filter((x) => typeof x === "number");
+    }
+  }
+
+  if (!analysis) {
+    throw new Error("Нет анализа проекта. Пройдите шаг анализа.");
+  }
+  if (!selectedIndices.length) {
+    throw new Error("Не выбраны сегменты. Вернитесь к анализу.");
+  }
+
+  let trafficDestination: TrafficDestination | null = null;
+  let textFormat: TextFormat | null = null;
+  let textCount: number | null = null;
+  let customWishes = "";
+  let referenceTexts = "";
+  let model: ClaudeModel = "claude-sonnet-4-6";
+
+  try {
+    const s = await getGenerationSettings(projectId);
+    if (s) {
+      const o = s as {
+        traffic_destination?: unknown;
+        text_format?: unknown;
+        text_count?: unknown;
+        custom_wishes?: unknown;
+        reference_texts?: unknown;
+        model?: unknown;
+      };
+      if (typeof o.traffic_destination === "string") {
+        trafficDestination = o.traffic_destination as TrafficDestination;
+      }
+      if (
+        o.text_format === "short" ||
+        o.text_format === "long" ||
+        o.text_format === "mixed"
+      ) {
+        textFormat = o.text_format;
+      }
+      if (typeof o.text_count === "number") textCount = o.text_count;
+      if (typeof o.custom_wishes === "string") customWishes = o.custom_wishes;
+      if (typeof o.reference_texts === "string") {
+        referenceTexts = o.reference_texts;
+      }
+      if (typeof o.model === "string") model = o.model as ClaudeModel;
+    }
+  } catch (e) {
+    console.error("[texts] getGenerationSettings failed", e);
+  }
+
+  if (!trafficDestination || !textFormat || typeof textCount !== "number") {
+    // Fallback на localStorage
+    const gsRaw =
+      typeof window !== "undefined"
+        ? localStorage.getItem(STORAGE_KEY_GENERATION_SETTINGS)
+        : null;
+    const gs = readJson<Partial<GenerationSettings>>(gsRaw);
+    if (gs) {
+      if (!trafficDestination && gs.trafficDestination) {
+        trafficDestination = gs.trafficDestination;
+      }
+      if (!textFormat && gs.textFormat) textFormat = gs.textFormat;
+      if (textCount == null && typeof gs.textCount === "number") {
+        textCount = gs.textCount;
+      }
+      if (!customWishes && typeof gs.customWishes === "string") {
+        customWishes = gs.customWishes;
+      }
+      if (gs.model) model = gs.model;
+    }
+  }
+
+  if (!referenceTexts && typeof window !== "undefined") {
+    try {
+      referenceTexts =
+        localStorage.getItem(STORAGE_KEY_REFERENCE_TEXTS) ?? referenceTexts;
+    } catch {
+      // ignore
+    }
+  }
+
+  if (!trafficDestination || !textFormat || typeof textCount !== "number") {
+    throw new Error("Нет настроек генерации. Заполните шаг «Настройка».");
+  }
+
+  return {
+    analysis,
+    selectedIndices,
+    projectName,
+    settings: {
+      trafficDestination,
+      textFormat,
+      textCount,
+      customWishes,
+      referenceTexts,
+      model,
+    },
+  };
 }
 
 export function ProjectTextsView({ projectId }: ProjectTextsViewProps) {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [texts, setTexts] = useState<StoredText[]>([]);
+  const [hasExisting, setHasExisting] = useState(false);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [feedback, setFeedback] = useState("");
+  const [projectName, setProjectName] = useState<string | null>(null);
+  const contextRef = useRef<LoadedContext | null>(null);
 
-  const loadGeneration = useCallback(
-    async (opts?: {
+  const runGeneration = useCallback(
+    async (opts: {
       mode: "initial" | "append" | "feedback";
       feedbackText?: string;
       currentCount?: number;
       existingForFeedback?: GeneratedAdText[];
     }) => {
-      setLoading(true);
+      setGenerating(true);
       setError(null);
-
       try {
-        const analysisRaw = localStorage.getItem(STORAGE_KEY_ANALYSIS);
-        const analysis = toProjectAnalysis(readJson<unknown>(analysisRaw));
-        if (!analysis) {
-          throw new Error("Нет анализа проекта. Пройдите шаг анализа.");
-        }
+        const ctx = contextRef.current ?? (await loadContext(projectId));
+        contextRef.current = ctx;
+        setProjectName(ctx.projectName ?? null);
 
-        const selRaw = localStorage.getItem(STORAGE_KEY_SELECTED_SEGMENTS);
-        const indices = readJson<number[]>(selRaw);
-        if (!Array.isArray(indices) || indices.length === 0) {
-          throw new Error("Не выбраны сегменты. Вернитесь к анализу.");
-        }
+        const { analysis, selectedIndices, settings } = ctx;
 
-        const gsRaw = localStorage.getItem(STORAGE_KEY_GENERATION_SETTINGS);
-        const gs = readJson<Partial<GenerationSettings>>(gsRaw);
-        if (
-          !gs ||
-          !gs.trafficDestination ||
-          !gs.textFormat ||
-          typeof gs.textCount !== "number"
-        ) {
-          throw new Error("Нет настроек генерации. Заполните шаг «Настройка».");
-        }
-
-        const selectedSegments = indices
+        const selectedSegments = selectedIndices
           .filter((i) => i >= 0 && i < analysis.segments.length)
           .map((i) => analysis.segments[i]);
 
-        const referenceTexts =
-          localStorage.getItem(STORAGE_KEY_REFERENCE_TEXTS) ?? "";
-
-        const mode = opts?.mode ?? "initial";
+        const { mode } = opts;
         const append = mode === "append";
         const feedbackMode = mode === "feedback";
-        const feedbackText = feedbackMode ? opts?.feedbackText?.trim() : undefined;
+        const feedbackText = feedbackMode
+          ? opts.feedbackText?.trim()
+          : undefined;
 
         const countForRequest =
           mode === "append"
-            ? gs.textCount
+            ? settings.textCount
             : feedbackMode
               ? Math.min(
                   10,
-                  Math.max(1, opts?.currentCount ?? gs.textCount)
+                  Math.max(1, opts.currentCount ?? settings.textCount)
                 )
-              : gs.textCount;
+              : settings.textCount;
 
         const existingForFeedback =
-          feedbackMode && (opts?.existingForFeedback?.length ?? 0) > 0
-            ? opts?.existingForFeedback
+          feedbackMode && (opts.existingForFeedback?.length ?? 0) > 0
+            ? opts.existingForFeedback
             : undefined;
 
         const res = await fetch(`/api/projects/${projectId}/generate`, {
@@ -143,12 +287,14 @@ export function ProjectTextsView({ projectId }: ProjectTextsViewProps) {
           body: JSON.stringify({
             analysis,
             selectedSegments,
-            trafficDestination: trafficDestinationLabel(gs.trafficDestination),
-            textFormat: gs.textFormat,
+            trafficDestination: trafficDestinationLabel(
+              settings.trafficDestination
+            ),
+            textFormat: settings.textFormat,
             textCount: countForRequest,
-            customWishes: gs.customWishes ?? "",
-            model: gs.model ?? "claude-sonnet-4-6",
-            referenceTexts,
+            customWishes: settings.customWishes,
+            model: settings.model,
+            referenceTexts: settings.referenceTexts,
             feedback: feedbackText,
             existingTexts: existingForFeedback,
           }),
@@ -170,31 +316,106 @@ export function ProjectTextsView({ projectId }: ProjectTextsViewProps) {
         if (!Array.isArray(nextTextsUnknown)) {
           throw new Error("Некорректный ответ сервера");
         }
+        const tokensUsed =
+          typeof (data as { tokensUsed?: unknown }).tokensUsed === "number"
+            ? ((data as { tokensUsed: number }).tokensUsed)
+            : 0;
+        const timeMs =
+          typeof (data as { timeMs?: unknown }).timeMs === "number"
+            ? ((data as { timeMs: number }).timeMs)
+            : 0;
 
         const mapped: StoredText[] = nextTextsUnknown.map((t) => ({
           id: createClientId(),
           ...(t as GeneratedAdText),
         }));
 
+        let finalTexts: StoredText[] = [];
         setTexts((prev) => {
-          if (append) return [...prev, ...mapped];
-          return mapped;
+          finalTexts = append ? [...prev, ...mapped] : mapped;
+          return finalTexts;
         });
         setSelected({});
+        setHasExisting(true);
+
+        // Сохраняем батч в Supabase
+        try {
+          const payload = finalTexts.map(stripId) as unknown[];
+          await saveGeneratedTexts(
+            projectId,
+            payload,
+            tokensUsed,
+            timeMs,
+            settings.model,
+            feedbackText
+          );
+        } catch (e) {
+          console.error("[texts] saveGeneratedTexts failed", e);
+          toast.error("Не удалось сохранить тексты в облако");
+        }
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Неизвестная ошибка";
         setError(msg);
         toast.error(msg);
       } finally {
-        setLoading(false);
+        setGenerating(false);
       }
     },
     [projectId]
   );
 
+  // ── Инициализация: если есть сохранённые тексты — показываем их, иначе генерим ──
   useEffect(() => {
-    void loadGeneration({ mode: "initial" });
-  }, [loadGeneration]);
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const ctx = await loadContext(projectId);
+        if (cancelled) return;
+        contextRef.current = ctx;
+        setProjectName(ctx.projectName ?? null);
+      } catch (e) {
+        if (cancelled) return;
+        const msg = e instanceof Error ? e.message : "Неизвестная ошибка";
+        setError(msg);
+        toast.error(msg);
+        setLoading(false);
+        return;
+      }
+
+      let existingFound = false;
+      try {
+        const existing = await getGeneratedTexts(projectId);
+        if (cancelled) return;
+        if (existing) {
+          const existingTexts = (existing as { texts?: unknown }).texts;
+          if (Array.isArray(existingTexts)) {
+            const mapped: StoredText[] = existingTexts.map((t) => ({
+              id: createClientId(),
+              ...(t as GeneratedAdText),
+            }));
+            setTexts(mapped);
+            setHasExisting(true);
+            existingFound = true;
+          }
+        }
+      } catch (e) {
+        console.error("[texts] getGeneratedTexts failed", e);
+      }
+
+      if (!cancelled) setLoading(false);
+
+      if (!cancelled && !existingFound) {
+        await runGeneration({ mode: "initial" });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, runGeneration]);
 
   const selectedCount = useMemo(() => {
     return texts.filter((t) => selected[t.id]).length;
@@ -215,9 +436,7 @@ export function ProjectTextsView({ projectId }: ProjectTextsViewProps) {
       toast.message("Ничего не выбрано");
       return;
     }
-    const payload = chosen
-      .map((t, i) => buildCopyPayload(t, i))
-      .join("\n\n" + "─".repeat(50) + "\n\n");
+    const payload = chosen.map((t, i) => buildCopyPayload(t, i)).join("\n\n");
     try {
       await navigator.clipboard.writeText(payload);
       toast.success("Скопировано");
@@ -232,19 +451,33 @@ export function ProjectTextsView({ projectId }: ProjectTextsViewProps) {
       toast.message("Ничего не выбрано");
       return;
     }
-    const payload = chosen
-      .map((t, i) => buildCopyPayload(t, i))
-      .join("\n\n" + "─".repeat(50) + "\n\n");
+    const payload = chosen.map((t, i) => buildCopyPayload(t, i)).join("\n\n");
     const blob = new Blob([payload], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `vk-texts-${projectId}.txt`;
+    const date = new Date().toLocaleDateString("ru-RU").replace(/\./g, "-");
+    a.download = projectName
+      ? `${projectName}_тексты_${date}.txt`
+      : `тексты_${date}.txt`;
     a.click();
     URL.revokeObjectURL(url);
   }
 
+  const busy = loading || generating;
+
   if (loading && texts.length === 0) {
+    return (
+      <div className="border-border bg-muted/30 flex min-h-[320px] flex-col items-center justify-center gap-4 rounded-[12px] border border-dashed px-6 py-16">
+        <Loader2 className="text-primary size-10 animate-spin" aria-hidden />
+        <p className="text-foreground text-center text-base font-medium">
+          Загружаем тексты…
+        </p>
+      </div>
+    );
+  }
+
+  if (generating && texts.length === 0) {
     return (
       <div className="border-border bg-muted/30 flex min-h-[320px] flex-col items-center justify-center gap-4 rounded-[12px] border border-dashed px-6 py-16">
         <Loader2 className="text-primary size-10 animate-spin" aria-hidden />
@@ -275,7 +508,7 @@ export function ProjectTextsView({ projectId }: ProjectTextsViewProps) {
           <CardFooter>
             <Button
               type="button"
-              onClick={() => void loadGeneration({ mode: "initial" })}
+              onClick={() => void runGeneration({ mode: "initial" })}
             >
               Попробовать снова
             </Button>
@@ -329,7 +562,25 @@ export function ProjectTextsView({ projectId }: ProjectTextsViewProps) {
         </div>
       </div>
 
-      {loading && (
+      {hasExisting && !generating && (
+        <div className="bg-muted/40 text-muted-foreground flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm">
+          <span>
+            Показаны ранее сгенерированные тексты. Можно перегенерировать или
+            добавить ещё.
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={busy}
+            onClick={() => void runGeneration({ mode: "initial" })}
+          >
+            Перегенерировать
+          </Button>
+        </div>
+      )}
+
+      {generating && (
         <div className="bg-primary/5 text-primary flex items-center gap-2 rounded-lg border border-primary/20 px-3 py-2 text-sm">
           <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden />
           Генерируем тексты...
@@ -447,9 +698,9 @@ export function ProjectTextsView({ projectId }: ProjectTextsViewProps) {
             <Button
               type="button"
               variant="outline"
-              disabled={loading || !feedback.trim()}
+              disabled={busy || !feedback.trim()}
               onClick={() => {
-                void loadGeneration({
+                void runGeneration({
                   mode: "feedback",
                   feedbackText: feedback,
                   currentCount: texts.length,
@@ -461,14 +712,27 @@ export function ProjectTextsView({ projectId }: ProjectTextsViewProps) {
             </Button>
             <Button
               type="button"
-              disabled={loading}
-              onClick={() => void loadGeneration({ mode: "append" })}
+              disabled={busy}
+              onClick={() => void runGeneration({ mode: "append" })}
             >
               Сгенерировать ещё
             </Button>
           </div>
         </CardContent>
       </Card>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-6">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => router.push(`/project/${projectId}/configure`)}
+        >
+          ← Назад к настройкам
+        </Button>
+        <Button type="button" onClick={() => router.push("/projects")}>
+          Готово — к списку проектов
+        </Button>
+      </div>
     </div>
   );
 }

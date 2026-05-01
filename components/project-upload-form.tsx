@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FileUp, Trash2, Upload } from "lucide-react";
+import { FileUp, Loader2, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,13 @@ import {
   MAX_PROJECT_FILE_BYTES,
   validateProjectFile,
 } from "@/lib/project-files";
+import {
+  deleteProjectFile,
+  getProject,
+  getProjectFiles,
+  saveProjectFile,
+  updateProject,
+} from "@/lib/supabase/queries";
 import { cn, createClientId } from "@/lib/utils";
 
 const STORAGE_KEY_DESCRIPTION = "project_description";
@@ -29,8 +36,11 @@ const STORAGE_KEY_PROJECT_FILES_CONTENT = "project_files_content";
 
 export type LocalUploadItem = {
   id: string;
-  file: File;
-  extractStatus: "pending" | "ready" | "skipped" | "error";
+  dbId?: string;
+  fileName: string;
+  fileSize: number;
+  file?: File;
+  extractStatus: "pending" | "ready" | "skipped" | "error" | "saving";
   extractedContent?: string;
   extractError?: string;
 };
@@ -46,68 +56,182 @@ export function ProjectUploadForm({ projectId }: ProjectUploadFormProps) {
   const [description, setDescription] = useState("");
   const [referenceTexts, setReferenceTexts] = useState("");
   const [isDragging, setIsDragging] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const descriptionSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
+  const initialDescriptionRef = useRef<string | null>(null);
 
+  // ── Загрузка состояния: проект + файлы из Supabase, reference_texts — локально как fallback ──
   useEffect(() => {
-    try {
-      setDescription(localStorage.getItem(STORAGE_KEY_DESCRIPTION) ?? "");
-      setReferenceTexts(
-        localStorage.getItem(STORAGE_KEY_REFERENCE_TEXTS) ?? ""
-      );
-    } catch {
-      // ignore
-    }
-  }, []);
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
 
-  const addFiles = useCallback((fileList: FileList | File[]) => {
-    const next: LocalUploadItem[] = [];
-    for (const file of Array.from(fileList)) {
-      const err = validateProjectFile(file);
-      if (err === "size") {
-        toast.error(
-          `Файл «${file.name}» больше 20 МБ — выберите другой файл.`
+      try {
+        setReferenceTexts(
+          localStorage.getItem(STORAGE_KEY_REFERENCE_TEXTS) ?? ""
         );
-        continue;
+      } catch {
+        // ignore
       }
-      if (err === "type") {
-        toast.error(
-          `Файл «${file.name}» — недопустимый формат. Разрешены PDF, DOCX, TXT, JPG, PNG.`
-        );
-        continue;
-      }
-      const id = createClientId();
-      next.push({ id, file, extractStatus: "pending" });
-    }
-    if (!next.length) return;
-    setItems((prev) => [...prev, ...next]);
 
-    for (const item of next) {
-      void extractTextFromProjectFile(item.file).then((result) => {
-        setItems((prev) =>
-          prev.map((x) => {
-            if (x.id !== item.id) return x;
-            if (result.ok) {
-              return {
-                ...x,
-                extractStatus: "ready",
-                extractedContent: result.content,
-              };
-            }
-            if (result.reason === "skipped") {
-              return { ...x, extractStatus: "skipped" };
-            }
-            toast.error(
-              `«${item.file.name}»: ${result.message ?? "ошибка чтения"}`
+      try {
+        const project = await getProject(projectId);
+        if (cancelled) return;
+        const desc =
+          typeof (project as { description?: unknown } | null)?.description ===
+          "string"
+            ? ((project as { description: string }).description ?? "")
+            : "";
+        setDescription(desc);
+        initialDescriptionRef.current = desc;
+      } catch (e) {
+        console.error("[upload] getProject failed", e);
+        try {
+          const fallback =
+            localStorage.getItem(STORAGE_KEY_DESCRIPTION) ?? "";
+          if (!cancelled) {
+            setDescription(fallback);
+            initialDescriptionRef.current = fallback;
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      try {
+        const files = await getProjectFiles(projectId);
+        if (cancelled) return;
+        const arr = (files ?? []) as Array<{
+          id: string;
+          file_name: string;
+          file_size: number;
+          content: string | null;
+        }>;
+        const mapped: LocalUploadItem[] = arr.map((f) => ({
+          id: createClientId(),
+          dbId: f.id,
+          fileName: f.file_name,
+          fileSize: f.file_size ?? 0,
+          extractStatus: "ready",
+          extractedContent: f.content ?? "",
+        }));
+        setItems(mapped);
+      } catch (e) {
+        console.error("[upload] getProjectFiles failed", e);
+      }
+
+      if (!cancelled) setLoading(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+
+  const addFiles = useCallback(
+    (fileList: FileList | File[]) => {
+      const next: LocalUploadItem[] = [];
+      for (const file of Array.from(fileList)) {
+        const err = validateProjectFile(file);
+        if (err === "size") {
+          toast.error(
+            `Файл «${file.name}» больше 20 МБ — выберите другой файл.`
+          );
+          continue;
+        }
+        if (err === "type") {
+          toast.error(
+            `Файл «${file.name}» — недопустимый формат. Разрешены PDF, DOCX, TXT, CSV, JPG, PNG.`
+          );
+          continue;
+        }
+        const id = createClientId();
+        next.push({
+          id,
+          fileName: file.name,
+          fileSize: file.size,
+          file,
+          extractStatus: "pending",
+        });
+      }
+      if (!next.length) return;
+      setItems((prev) => [...prev, ...next]);
+
+      for (const item of next) {
+        if (!item.file) continue;
+        void extractTextFromProjectFile(item.file).then(async (result) => {
+          if (!result.ok) {
+            setItems((prev) =>
+              prev.map((x) => {
+                if (x.id !== item.id) return x;
+                if (result.reason === "skipped") {
+                  return { ...x, extractStatus: "skipped" };
+                }
+                toast.error(
+                  `«${item.fileName}»: ${result.message ?? "ошибка чтения"}`
+                );
+                return {
+                  ...x,
+                  extractStatus: "error",
+                  extractError: result.message,
+                };
+              })
             );
-            return {
-              ...x,
-              extractStatus: "error",
-              extractError: result.message,
-            };
-          })
-        );
-      });
-    }
-  }, []);
+            return;
+          }
+
+          // Отметим "saving" пока пишем в Supabase
+          setItems((prev) =>
+            prev.map((x) =>
+              x.id === item.id
+                ? {
+                    ...x,
+                    extractStatus: "saving",
+                    extractedContent: result.content,
+                  }
+                : x
+            )
+          );
+
+          try {
+            const saved = await saveProjectFile(
+              projectId,
+              item.fileName,
+              result.content,
+              item.fileSize
+            );
+            const savedId = (saved as { id?: string } | null)?.id;
+            setItems((prev) =>
+              prev.map((x) =>
+                x.id === item.id
+                  ? {
+                      ...x,
+                      dbId: savedId,
+                      extractStatus: "ready",
+                    }
+                  : x
+              )
+            );
+          } catch (e) {
+            console.error("[upload] saveProjectFile failed", e);
+            toast.error(
+              `Не удалось сохранить «${item.fileName}» в облако. Файл остаётся локально.`
+            );
+            setItems((prev) =>
+              prev.map((x) =>
+                x.id === item.id
+                  ? { ...x, extractStatus: "ready" }
+                  : x
+              )
+            );
+          }
+        });
+      }
+    },
+    [projectId]
+  );
 
   const onDrop = useCallback(
     (e: React.DragEvent) => {
@@ -131,48 +255,78 @@ export function ProjectUploadForm({ projectId }: ProjectUploadFormProps) {
     [addFiles]
   );
 
-  function removeItem(id: string) {
-    setItems((prev) => prev.filter((x) => x.id !== id));
+  async function removeItem(item: LocalUploadItem) {
+    setItems((prev) => prev.filter((x) => x.id !== item.id));
+    if (item.dbId) {
+      try {
+        await deleteProjectFile(item.dbId);
+      } catch (e) {
+        console.error("[upload] deleteProjectFile failed", e);
+        toast.error(`Не удалось удалить «${item.fileName}» из облака.`);
+      }
+    }
   }
 
+  // ── Описание: автосохранение в Supabase + localStorage (fallback) ──
   useEffect(() => {
-    const payload = items
-      .filter(
-        (i) => i.extractStatus === "ready" && i.extractedContent != null
-      )
-      .map((i) => ({
-        fileName: i.file.name,
-        content: i.extractedContent as string,
-      }));
-    try {
-      localStorage.setItem(
-        STORAGE_KEY_PROJECT_FILES_CONTENT,
-        JSON.stringify(payload)
-      );
-    } catch {
-      // ignore
+    if (loading) return;
+    if (initialDescriptionRef.current === description) return;
+    if (descriptionSaveTimer.current) {
+      clearTimeout(descriptionSaveTimer.current);
     }
-  }, [items]);
+    descriptionSaveTimer.current = setTimeout(async () => {
+      try {
+        await updateProject(projectId, { description });
+        initialDescriptionRef.current = description;
+      } catch (e) {
+        console.error("[upload] updateProject(description) failed", e);
+      }
+      try {
+        localStorage.setItem(STORAGE_KEY_DESCRIPTION, description);
+      } catch {
+        // ignore
+      }
+    }, 600);
 
-  function handleNext() {
+    return () => {
+      if (descriptionSaveTimer.current) {
+        clearTimeout(descriptionSaveTimer.current);
+      }
+    };
+  }, [description, projectId, loading]);
+
+  async function handleNext() {
     const trimmed = description.trim();
     if (!trimmed && items.length === 0) {
       toast.error("Добавьте описание проекта или загрузите файлы");
       return;
     }
-    if (items.some((i) => i.extractStatus === "pending")) {
-      toast.error("Подождите, извлекается текст из файлов…");
+    if (
+      items.some(
+        (i) => i.extractStatus === "pending" || i.extractStatus === "saving"
+      )
+    ) {
+      toast.error("Подождите, идёт сохранение файлов…");
       return;
     }
-    const projectFilesContent = items
-      .filter(
-        (i) => i.extractStatus === "ready" && i.extractedContent != null
-      )
-      .map((i) => ({
-        fileName: i.file.name,
-        content: i.extractedContent as string,
-      }));
+
+    // Параллельно форсим сохранение описания (flush debounced)
     try {
+      await updateProject(projectId, { description });
+    } catch (e) {
+      console.error("[upload] updateProject final failed", e);
+    }
+
+    // Fallback: снимок данных в localStorage — на случай проблем с Supabase
+    try {
+      const projectFilesContent = items
+        .filter(
+          (i) => i.extractStatus === "ready" && i.extractedContent != null
+        )
+        .map((i) => ({
+          fileName: i.fileName,
+          content: i.extractedContent as string,
+        }));
       localStorage.setItem(STORAGE_KEY_DESCRIPTION, description);
       localStorage.setItem(STORAGE_KEY_REFERENCE_TEXTS, referenceTexts);
       localStorage.setItem(
@@ -180,9 +334,9 @@ export function ProjectUploadForm({ projectId }: ProjectUploadFormProps) {
         JSON.stringify(projectFilesContent)
       );
     } catch {
-      toast.error("Не удалось сохранить данные в браузере (localStorage)");
-      return;
+      // ignore — localStorage — всего лишь fallback
     }
+
     router.push(`/project/${projectId}/analysis`);
   }
 
@@ -240,10 +394,17 @@ export function ProjectUploadForm({ projectId }: ProjectUploadFormProps) {
           Перетащите файлы сюда или нажмите для выбора
         </p>
         <p className="notion-page-subtitle mt-2 !text-sm">
-          PDF, DOCX, TXT, JPG, PNG · до {formatFileSize(MAX_PROJECT_FILE_BYTES)}{" "}
+          PDF, DOCX, TXT, CSV, JPG, PNG · до {formatFileSize(MAX_PROJECT_FILE_BYTES)}{" "}
           на файл
         </p>
       </div>
+
+      {loading && (
+        <div className="text-muted-foreground flex items-center gap-2 text-sm">
+          <Loader2 className="size-4 animate-spin" aria-hidden />
+          Загружаем данные проекта…
+        </div>
+      )}
 
       {items.length > 0 && (
         <Card className="border-border">
@@ -252,7 +413,7 @@ export function ProjectUploadForm({ projectId }: ProjectUploadFormProps) {
               Загруженные файлы
             </CardTitle>
             <CardDescription>
-              Хранятся только в этой сессии браузера
+              Сохраняются в облаке и доступны на всех устройствах
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -268,14 +429,19 @@ export function ProjectUploadForm({ projectId }: ProjectUploadFormProps) {
                       aria-hidden
                     />
                     <span className="truncate text-sm font-medium">
-                      {item.file.name}
+                      {item.fileName}
                     </span>
                     <span className="text-muted-foreground shrink-0 text-xs">
-                      {formatFileSize(item.file.size)}
+                      {formatFileSize(item.fileSize)}
                     </span>
                     {item.extractStatus === "pending" && (
                       <span className="text-muted-foreground shrink-0 text-xs">
                         · извлечение текста…
+                      </span>
+                    )}
+                    {item.extractStatus === "saving" && (
+                      <span className="text-muted-foreground shrink-0 text-xs">
+                        · сохранение в облако…
                       </span>
                     )}
                     {item.extractStatus === "skipped" && (
@@ -285,7 +451,7 @@ export function ProjectUploadForm({ projectId }: ProjectUploadFormProps) {
                     )}
                     {item.extractStatus === "ready" && (
                       <span className="text-muted-foreground shrink-0 text-xs">
-                        · текст извлечён
+                        · {item.dbId ? "в облаке" : "текст извлечён"}
                       </span>
                     )}
                     {item.extractStatus === "error" && (
@@ -301,9 +467,9 @@ export function ProjectUploadForm({ projectId }: ProjectUploadFormProps) {
                     className="text-destructive hover:text-destructive shrink-0"
                     onClick={(e) => {
                       e.stopPropagation();
-                      removeItem(item.id);
+                      void removeItem(item);
                     }}
-                    aria-label={`Удалить ${item.file.name}`}
+                    aria-label={`Удалить ${item.fileName}`}
                   >
                     <Trash2 className="size-4" />
                   </Button>
@@ -321,15 +487,7 @@ export function ProjectUploadForm({ projectId }: ProjectUploadFormProps) {
         <Textarea
           id="project-desc"
           value={description}
-          onChange={(e) => {
-            const v = e.target.value;
-            setDescription(v);
-            try {
-              localStorage.setItem(STORAGE_KEY_DESCRIPTION, v);
-            } catch {
-              // ignore
-            }
-          }}
+          onChange={(e) => setDescription(e.target.value)}
           placeholder="Цель кампании, аудитория, оффер, ограничения по тексту…"
           rows={5}
           className="min-h-[120px] resize-y"

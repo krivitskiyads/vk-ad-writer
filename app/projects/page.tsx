@@ -1,4 +1,5 @@
 import { CreateProjectDialog } from "@/components/create-project-dialog";
+import { ProjectsList } from "@/components/projects-list";
 import {
   Card,
   CardContent,
@@ -30,9 +31,7 @@ export default function ProjectsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <p className="text-muted-foreground py-12 text-center text-sm">
-            Пока нет проектов. Нажмите «Создать проект», чтобы начать.
-          </p>
+          <ProjectsList />
         </CardContent>
       </Card>
     </div>

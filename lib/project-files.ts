@@ -4,6 +4,7 @@ const ALLOWED_EXTENSIONS = new Set([
   ".pdf",
   ".docx",
   ".txt",
+  ".csv",
   ".jpg",
   ".jpeg",
   ".png",
@@ -33,4 +34,4 @@ export function formatFileSize(bytes: number): string {
 }
 
 export const ACCEPT_FILE_ATTR =
-  ".pdf,.docx,.txt,.jpg,.jpeg,.png,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,image/jpeg,image/png";
+  ".pdf,.docx,.txt,.csv,.jpg,.jpeg,.png,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/csv,image/jpeg,image/png";

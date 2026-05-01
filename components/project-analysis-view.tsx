@@ -3,12 +3,22 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Card,
   CardContent,
@@ -17,6 +27,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import {
+  getProject,
+  getProjectFiles,
+  saveAnalysis,
+  updateProject,
+} from "@/lib/supabase/queries";
 import {
   pickAnalysisFromApiResponse,
   toProjectAnalysis,
@@ -219,37 +235,71 @@ export function ProjectAnalysisView({ projectId }: ProjectAnalysisViewProps) {
     () => new Set()
   );
   const [expandedMap, setExpandedMap] = useState<Record<number, boolean>>({});
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editForm, setEditForm] = useState<Partial<AnalysisSegment>>({});
 
   const runAnalysis = useCallback(async () => {
-    let desc = "";
-    let projectFilesContent: { fileName: string; content: string }[] = [];
-    try {
-      desc = localStorage.getItem(STORAGE_KEY_DESCRIPTION) ?? "";
-      const raw = localStorage.getItem(STORAGE_KEY_PROJECT_FILES_CONTENT);
-      if (raw) {
-        const parsed: unknown = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          projectFilesContent = parsed.flatMap((x) => {
-            if (typeof x !== "object" || x === null) return [];
-            const fileName =
-              "fileName" in x && typeof x.fileName === "string"
-                ? x.fileName
-                : null;
-            const content =
-              "content" in x && typeof x.content === "string"
-                ? x.content
-                : null;
-            if (fileName === null || content === null) return [];
-            return [{ fileName, content }];
-          });
-        }
-      }
-    } catch {
-      toast.error("Не удалось прочитать localStorage");
-    }
-    setDescription(desc);
     setLoading(true);
     setError(null);
+
+    let desc = "";
+    let projectFilesContent: { fileName: string; content: string }[] = [];
+
+    // Описание и файлы — из Supabase, fallback на localStorage
+    try {
+      const project = await getProject(projectId);
+      const maybeDesc = (project as { description?: unknown } | null)
+        ?.description;
+      if (typeof maybeDesc === "string") desc = maybeDesc;
+    } catch (e) {
+      console.error("[analyze] getProject failed", e);
+      try {
+        desc = localStorage.getItem(STORAGE_KEY_DESCRIPTION) ?? "";
+      } catch {
+        // ignore
+      }
+    }
+
+    try {
+      const files = await getProjectFiles(projectId);
+      const arr = (files ?? []) as Array<{
+        file_name: string;
+        content: string | null;
+      }>;
+      projectFilesContent = arr
+        .filter((f) => typeof f.content === "string" && (f.content as string).length > 0)
+        .map((f) => ({
+          fileName: f.file_name,
+          content: f.content as string,
+        }));
+    } catch (e) {
+      console.error("[analyze] getProjectFiles failed", e);
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY_PROJECT_FILES_CONTENT);
+        if (raw) {
+          const parsed: unknown = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            projectFilesContent = parsed.flatMap((x) => {
+              if (typeof x !== "object" || x === null) return [];
+              const fileName =
+                "fileName" in x && typeof x.fileName === "string"
+                  ? x.fileName
+                  : null;
+              const content =
+                "content" in x && typeof x.content === "string"
+                  ? x.content
+                  : null;
+              if (fileName === null || content === null) return [];
+              return [{ fileName, content }];
+            });
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    setDescription(desc);
 
     try {
       const res = await fetch(`/api/projects/${projectId}/analyze`, {
@@ -301,6 +351,12 @@ export function ProjectAnalysisView({ projectId }: ProjectAnalysisViewProps) {
 
       if (normalized) {
         setAnalysis(normalized);
+        try {
+          await saveAnalysis(projectId, normalized, []);
+        } catch (e) {
+          console.error("[analyze] saveAnalysis failed", e);
+          toast.error("Не удалось сохранить анализ в облако");
+        }
         try {
           localStorage.setItem(
             STORAGE_KEY_ANALYSIS,
@@ -364,9 +420,66 @@ export function ProjectAnalysisView({ projectId }: ProjectAnalysisViewProps) {
     }
   }, [projectId]);
 
+  // ── Инициализация: сначала пытаемся загрузить анализ из БД ──
   useEffect(() => {
-    runAnalysis();
-  }, [runAnalysis]);
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const project = await getProject(projectId);
+        if (cancelled) return;
+
+        const rawAnalysis = (project as { analysis?: unknown } | null)
+          ?.analysis;
+        const normalized = toProjectAnalysis(rawAnalysis);
+
+        if (normalized) {
+          setAnalysis(normalized);
+
+          const rawSelected = (project as { selected_segments?: unknown } | null)
+            ?.selected_segments;
+          if (Array.isArray(rawSelected)) {
+            const sel = new Set<number>();
+            for (const idx of rawSelected) {
+              if (typeof idx === "number" && idx >= 0) sel.add(idx);
+            }
+            setSelectedIndices(sel);
+          }
+
+          const maybeDesc = (project as { description?: unknown } | null)
+            ?.description;
+          if (typeof maybeDesc === "string") setDescription(maybeDesc);
+
+          setLoading(false);
+          return;
+        }
+      } catch (e) {
+        console.error("[analyze] initial getProject failed", e);
+        // Фоллбек: пробуем загрузить из localStorage
+        try {
+          const aRaw = localStorage.getItem(STORAGE_KEY_ANALYSIS);
+          const parsed: unknown = aRaw ? JSON.parse(aRaw) : null;
+          const normalized = toProjectAnalysis(parsed);
+          if (normalized && !cancelled) {
+            setAnalysis(normalized);
+            setLoading(false);
+            return;
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      if (cancelled) return;
+      // Анализ отсутствует — запускаем.
+      void runAnalysis();
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, runAnalysis]);
 
   async function handleRestart() {
     await runAnalysis();
@@ -381,19 +494,93 @@ export function ProjectAnalysisView({ projectId }: ProjectAnalysisViewProps) {
     });
   }
 
-  function handleWorkWithSelected() {
+  async function handleWorkWithSelected() {
+    setEditingIndex(null);
+    setEditForm({});
     const sorted = Array.from(selectedIndices).sort((a, b) => a - b);
     if (sorted.length === 0) return;
+
+    try {
+      await updateProject(projectId, { selected_segments: sorted });
+    } catch (e) {
+      console.error("[analyze] updateProject(selected_segments) failed", e);
+      toast.error("Не удалось сохранить выбранные сегменты в облако");
+    }
     try {
       localStorage.setItem(
         STORAGE_KEY_SELECTED_SEGMENTS,
         JSON.stringify(sorted)
       );
     } catch {
-      toast.error("Не удалось сохранить выбранные сегменты");
-      return;
+      // ignore
     }
     setViewStage("details");
+  }
+
+  async function saveSegmentEdit(index: number) {
+    if (!analysis) return;
+
+    const normLines = (v: string[] | undefined) =>
+      (v ?? []).map((s) => s.trim()).filter((s) => s.length > 0);
+
+    const painPoints =
+      typeof editForm.pain_points === "string"
+        ? (editForm.pain_points as unknown as string)
+            .split("\n")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : normLines(editForm.pain_points);
+    const desires =
+      typeof editForm.desires === "string"
+        ? (editForm.desires as unknown as string)
+            .split("\n")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : normLines(editForm.desires);
+    const objections =
+      typeof editForm.objections === "string"
+        ? (editForm.objections as unknown as string)
+            .split("\n")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : normLines(editForm.objections);
+    const triggers =
+      typeof editForm.triggers === "string"
+        ? (editForm.triggers as unknown as string)
+            .split("\n")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : normLines(editForm.triggers);
+
+    const updatedSegments = [...analysis.segments];
+    const prev = updatedSegments[index] ?? ({} as AnalysisSegment);
+    const d = { ...prev.demographics, ...editForm.demographics };
+    updatedSegments[index] = {
+      ...prev,
+      ...editForm,
+      demographics: d,
+      pain_points: painPoints,
+      desires,
+      objections,
+      triggers,
+    };
+
+    const updated: ProjectAnalysis = { ...analysis, segments: updatedSegments };
+    setAnalysis(updated);
+
+    try {
+      await updateProject(projectId, { analysis: updated });
+    } catch (e) {
+      console.error("[analyze] updateProject(analysis) failed", e);
+      toast.error("Не удалось сохранить изменения в облако");
+    }
+    try {
+      localStorage.setItem(STORAGE_KEY_ANALYSIS, JSON.stringify(updated));
+    } catch {
+      // ignore
+    }
+    setEditingIndex(null);
+    setEditForm({});
   }
 
   function toggleExpanded(segmentIndex: number) {
@@ -516,41 +703,301 @@ export function ProjectAnalysisView({ projectId }: ProjectAnalysisViewProps) {
             <div className="grid gap-3">
               {analysis.segments.map((seg, index) => (
                 <Card
-                  key={`${seg.name}-${index}`}
+                  key={`segment-select-${index}`}
                   className="border-border py-3"
                 >
-                  <CardContent className="flex gap-3 px-4 py-0">
-                    <Checkbox
-                      id={`segment-${index}`}
-                      checked={selectedIndices.has(index)}
-                      onCheckedChange={(v) =>
-                        toggleSegmentSelected(index, v === true)
-                      }
-                      className="mt-1"
-                      aria-label={`Выбрать сегмент «${seg.name}»`}
-                    />
-                    <label
-                      htmlFor={`segment-${index}`}
-                      className="min-w-0 flex-1 cursor-pointer space-y-1"
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <span className="font-medium leading-snug">
-                          {seg.name}
-                        </span>
-                        <Badge
-                          variant={priorityBadgeVariant(seg.priority)}
-                          className="shrink-0"
-                        >
-                          {priorityLabel(seg.priority)}
-                        </Badge>
+                  {editingIndex === index ? (
+                    <CardContent className="space-y-4 px-4 py-3">
+                      <div className="space-y-2">
+                        <Label>Название</Label>
+                        <Input
+                          value={editForm.name ?? ""}
+                          onChange={(e) =>
+                            setEditForm((prev) => ({
+                              ...prev,
+                              name: e.target.value,
+                            }))
+                          }
+                        />
                       </div>
-                      {seg.description && (
-                        <p className="text-muted-foreground text-sm leading-relaxed">
-                          {seg.description}
-                        </p>
-                      )}
-                    </label>
-                  </CardContent>
+
+                      <div className="space-y-2">
+                        <Label>Описание</Label>
+                        <Textarea
+                          value={editForm.description ?? ""}
+                          onChange={(e) =>
+                            setEditForm((prev) => ({
+                              ...prev,
+                              description: e.target.value,
+                            }))
+                          }
+                          rows={2}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                          <Label>Возраст от</Label>
+                          <Input
+                            type="number"
+                            value={
+                              editForm.demographics?.age_from ?? ""
+                            }
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setEditForm((prev) => ({
+                                ...prev,
+                                demographics: {
+                                  ...prev.demographics,
+                                  age_from:
+                                    v === "" ? undefined : Number(v),
+                                },
+                              }));
+                            }}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Возраст до</Label>
+                          <Input
+                            type="number"
+                            value={editForm.demographics?.age_to ?? ""}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setEditForm((prev) => ({
+                                ...prev,
+                                demographics: {
+                                  ...prev.demographics,
+                                  age_to:
+                                    v === "" ? undefined : Number(v),
+                                },
+                              }));
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                          <Label>Пол</Label>
+                          <Select
+                            value={editForm.demographics?.gender ?? "all"}
+                            onValueChange={(v) =>
+                              setEditForm((prev) => ({
+                                ...prev,
+                                demographics: {
+                                  ...prev.demographics,
+                                  gender: v ?? "all",
+                                },
+                              }))
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">Все</SelectItem>
+                              <SelectItem value="male">Мужчины</SelectItem>
+                              <SelectItem value="female">Женщины</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Приоритет</Label>
+                          <Select
+                            value={editForm.priority ?? "medium"}
+                            onValueChange={(v) =>
+                              setEditForm((prev) => ({
+                                ...prev,
+                                priority: v ?? "medium",
+                              }))
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="high">Высокий</SelectItem>
+                              <SelectItem value="medium">Средний</SelectItem>
+                              <SelectItem value="low">Низкий</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Доход</Label>
+                        <Select
+                          value={editForm.demographics?.income ?? "средний"}
+                          onValueChange={(v) =>
+                            setEditForm((prev) => ({
+                              ...prev,
+                              demographics: {
+                                ...prev.demographics,
+                                income: v ?? "средний",
+                              },
+                            }))
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="низкий">низкий</SelectItem>
+                            <SelectItem value="средний">средний</SelectItem>
+                            <SelectItem value="выше среднего">
+                              выше среднего
+                            </SelectItem>
+                            <SelectItem value="высокий">высокий</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Боли (каждая с новой строки)</Label>
+                        <Textarea
+                          value={
+                            Array.isArray(editForm.pain_points)
+                              ? editForm.pain_points.join("\n")
+                              : ""
+                          }
+                          onChange={(e) =>
+                            setEditForm((prev) => ({
+                              ...prev,
+                              pain_points: e.target.value.split("\n"),
+                            }))
+                          }
+                          rows={4}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Желания (каждое с новой строки)</Label>
+                        <Textarea
+                          value={
+                            Array.isArray(editForm.desires)
+                              ? editForm.desires.join("\n")
+                              : ""
+                          }
+                          onChange={(e) =>
+                            setEditForm((prev) => ({
+                              ...prev,
+                              desires: e.target.value.split("\n"),
+                            }))
+                          }
+                          rows={3}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Возражения (каждое с новой строки)</Label>
+                        <Textarea
+                          value={
+                            Array.isArray(editForm.objections)
+                              ? editForm.objections.join("\n")
+                              : ""
+                          }
+                          onChange={(e) =>
+                            setEditForm((prev) => ({
+                              ...prev,
+                              objections: e.target.value.split("\n"),
+                            }))
+                          }
+                          rows={3}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Триггеры (каждый с новой строки)</Label>
+                        <Textarea
+                          value={
+                            Array.isArray(editForm.triggers)
+                              ? editForm.triggers.join("\n")
+                              : ""
+                          }
+                          onChange={(e) =>
+                            setEditForm((prev) => ({
+                              ...prev,
+                              triggers: e.target.value.split("\n"),
+                            }))
+                          }
+                          rows={3}
+                        />
+                      </div>
+
+                      <div className="flex gap-2 pt-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => void saveSegmentEdit(index)}
+                        >
+                          Сохранить
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setEditingIndex(null);
+                            setEditForm({});
+                          }}
+                        >
+                          Отмена
+                        </Button>
+                      </div>
+                    </CardContent>
+                  ) : (
+                    <CardContent className="flex gap-3 px-4 py-0">
+                      <Checkbox
+                        id={`segment-${index}`}
+                        checked={selectedIndices.has(index)}
+                        onCheckedChange={(v) =>
+                          toggleSegmentSelected(index, v === true)
+                        }
+                        className="mt-1"
+                        aria-label={`Выбрать сегмент «${seg.name}»`}
+                      />
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <label
+                            htmlFor={`segment-${index}`}
+                            className="cursor-pointer font-medium leading-snug"
+                          >
+                            {seg.name}
+                          </label>
+                          <div className="flex shrink-0 items-center gap-1.5">
+                            <Badge
+                              variant={priorityBadgeVariant(seg.priority)}
+                              className="shrink-0"
+                            >
+                              {priorityLabel(seg.priority)}
+                            </Badge>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 gap-1 px-2"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                setEditingIndex(index);
+                                setEditForm({ ...analysis.segments[index] });
+                              }}
+                            >
+                              <Pencil
+                                className="size-3.5"
+                                aria-hidden
+                              />
+                              <span className="text-xs">Редактировать</span>
+                            </Button>
+                          </div>
+                        </div>
+                        {seg.description && (
+                          <p className="text-muted-foreground text-sm leading-relaxed">
+                            {seg.description}
+                          </p>
+                        )}
+                      </div>
+                    </CardContent>
+                  )}
                 </Card>
               ))}
             </div>
@@ -558,7 +1005,7 @@ export function ProjectAnalysisView({ projectId }: ProjectAnalysisViewProps) {
             <div className="flex flex-wrap justify-end gap-3 border-t pt-4">
               <Button
                 type="button"
-                onClick={handleWorkWithSelected}
+                onClick={() => void handleWorkWithSelected()}
                 disabled={selectedIndices.size === 0}
               >
                 Работать с выбранными сегментами
@@ -704,8 +1151,8 @@ export function ProjectAnalysisView({ projectId }: ProjectAnalysisViewProps) {
 
       {viewStage === "select" && !description.trim() && (
         <p className="text-muted-foreground text-xs">
-          Описание проекта в браузере не найдено — анализ выполнен по пустому
-          вводу. Уточните бриф на шаге загрузки и перезапустите анализ.
+          Описание проекта не найдено — анализ выполнен по пустому вводу.
+          Уточните бриф на шаге загрузки и перезапустите анализ.
         </p>
       )}
     </div>
