@@ -4,6 +4,10 @@ import type Anthropic from "@anthropic-ai/sdk";
 
 import { callClaude } from "@/lib/ai/claude-client";
 import { ANALYST_SYSTEM_PROMPT } from "@/lib/prompts/analyst";
+import { createServerSupabase } from "@/lib/supabase/server";
+import { writeUsageLog } from "@/lib/usage-log";
+
+const ANALYZE_MODEL = "claude-sonnet-4-6";
 
 const ANALYSIS_TOOL: Anthropic.Messages.Tool = {
   name: "submit_analysis",
@@ -117,7 +121,7 @@ export async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
-  await context.params;
+  const { id: projectId } = await context.params;
 
   if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json(
@@ -152,13 +156,40 @@ export async function POST(
       "[analyze] system prompt prefix:",
       ANALYST_SYSTEM_PROMPT.slice(0, 100)
     );
-    const { content, tokensUsed, timeMs } = await callClaude({
+
+    const start = performance.now();
+    const { content, tokensUsed, timeMs, usage } = await callClaude({
       systemPrompt: ANALYST_SYSTEM_PROMPT,
       userPrompt,
       temperature: 0.4,
       tool: ANALYSIS_TOOL,
       toolName: "submit_analysis",
+      model: ANALYZE_MODEL,
     });
+    const time_ms = Math.round(performance.now() - start);
+
+    // Логируем расход токенов в usage_log. Не блокируем респонс при ошибке.
+    try {
+      const supabase = await createServerSupabase();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        await writeUsageLog({
+          user_id: user.id,
+          project_id: projectId,
+          action: "analyze",
+          model: ANALYZE_MODEL,
+          input_tokens: usage.input_tokens,
+          output_tokens: usage.output_tokens,
+          cache_read_tokens: usage.cache_read_tokens,
+          cache_creation_tokens: usage.cache_creation_tokens,
+          time_ms,
+        });
+      }
+    } catch (logErr) {
+      console.error("[analyze] usage log failed (non-fatal)", logErr);
+    }
 
     const responseBody = {
       analysis: content === undefined ? null : content,

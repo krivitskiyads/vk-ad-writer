@@ -6,6 +6,8 @@ import {
   COPYWRITER_SYSTEM_PROMPT,
   buildSingleTextUserPrompt,
 } from "@/lib/prompts/copywriter";
+import { createServerSupabase } from "@/lib/supabase/server";
+import { writeUsageLog } from "@/lib/usage-log";
 import { toProjectAnalysis } from "@/lib/types/project-analysis";
 import type { AnalysisSegment } from "@/lib/types/project-analysis";
 import type { GeneratedAdText } from "@/lib/types/generated-texts";
@@ -66,7 +68,7 @@ export async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
-  await context.params;
+  const { id: projectId } = await context.params;
 
   if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json(
@@ -146,6 +148,31 @@ export async function POST(
   }
 
   try {
+    // ── Auth + parent_log_id (последний analyze для этого проекта) ──
+    let userId: string | null = null;
+    let parentLogId: string | null = null;
+    try {
+      const supabase = await createServerSupabase();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        userId = user.id;
+        const { data: lastAnalyze } = await supabase
+          .from("usage_log")
+          .select("id")
+          .eq("project_id", projectId)
+          .eq("action", "analyze")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        parentLogId =
+          (lastAnalyze as { id?: string } | null)?.id ?? null;
+      }
+    } catch (e) {
+      console.error("[generate] failed to resolve user/parent_log_id", e);
+    }
+
     const approaches = Array.from({ length: count }, (_, i) =>
       APPROACH_POOL[i % APPROACH_POOL.length]
     );
@@ -185,11 +212,35 @@ export async function POST(
         tool: SINGLE_TEXT_TOOL,
         toolName: "submit_text",
         model: selectedModel,
-      }).then(({ content, tokensUsed, timeMs }) => {
+      }).then(async ({ content, tokensUsed, timeMs, usage }) => {
         const text = content as GeneratedAdText | null;
         if (text && typeof text === "object" && "body" in text) {
           text.text_format = (text.body?.length ?? 0) > 600 ? "long" : "short";
         }
+
+        // Логируем расход. Только успешные вызовы Claude.
+        // generated_text_id пока null: индивидуальные тексты в БД сохраняет
+        // клиент батчем (saveGeneratedTexts), серверу id неизвестен.
+        if (text && userId) {
+          try {
+            await writeUsageLog({
+              user_id: userId,
+              project_id: projectId,
+              action: "generate_text",
+              model: selectedModel,
+              input_tokens: usage.input_tokens,
+              output_tokens: usage.output_tokens,
+              cache_read_tokens: usage.cache_read_tokens,
+              cache_creation_tokens: usage.cache_creation_tokens,
+              time_ms: timeMs,
+              generated_text_id: null,
+              parent_log_id: parentLogId,
+            });
+          } catch (logErr) {
+            console.error("[generate] usage log failed (non-fatal)", logErr);
+          }
+        }
+
         return { text, tokensUsed, timeMs };
       });
     });

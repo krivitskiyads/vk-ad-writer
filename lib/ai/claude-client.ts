@@ -2,10 +2,18 @@ import Anthropic from "@anthropic-ai/sdk";
 
 const MAX_TOKENS = 4096;
 
+export type CallClaudeUsage = {
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+};
+
 export type CallClaudeResult = {
   content: unknown;
   tokensUsed: number;
   timeMs: number;
+  usage: CallClaudeUsage;
 };
 
 function getAnthropicClient(): Anthropic {
@@ -88,8 +96,24 @@ export async function callClaude({
 
   const input = message.usage?.input_tokens ?? 0;
   const output = message.usage?.output_tokens ?? 0;
+  const cacheRead =
+    (message.usage as { cache_read_input_tokens?: number } | undefined)
+      ?.cache_read_input_tokens ?? 0;
+  const cacheCreation =
+    (message.usage as { cache_creation_input_tokens?: number } | undefined)
+      ?.cache_creation_input_tokens ?? 0;
   const tokensUsed = input + output;
   const timeMs = Date.now() - started;
 
-  return { content, tokensUsed, timeMs };
+  return {
+    content,
+    tokensUsed,
+    timeMs,
+    usage: {
+      input_tokens: input,
+      output_tokens: output,
+      cache_read_tokens: cacheRead,
+      cache_creation_tokens: cacheCreation,
+    },
+  };
 }

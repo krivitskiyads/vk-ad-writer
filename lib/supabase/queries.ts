@@ -239,6 +239,10 @@ export async function getUsageStats() {
   return data;
 }
 
+// writeUsageLog вынесён в отдельный server-only модуль lib/usage-log.ts —
+// чтобы webpack не подтягивал next/headers в клиентский бандл через цепочку
+// клиентских импортов queries.ts.
+
 // ── Профиль ──
 
 export async function getProfile() {
