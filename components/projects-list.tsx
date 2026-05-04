@@ -7,13 +7,20 @@ import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { deleteProject, getProjects } from "@/lib/supabase/queries";
+import { ProjectCostBadge } from "@/components/project-cost-badge";
+import {
+  deleteProject,
+  getCurrentUserRole,
+  getProjectsWithUsage,
+} from "@/lib/supabase/queries";
+import type { ProjectUsageSummary } from "@/lib/types/project-usage";
 
 type ProjectRow = {
   id: string;
   name: string;
   status?: string | null;
   updated_at?: string | null;
+  usage?: ProjectUsageSummary | null;
 };
 
 function statusLabel(status: string | null | undefined): string {
@@ -83,15 +90,20 @@ export function ProjectsList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
       try {
-        const data = await getProjects();
+        const [data, role] = await Promise.all([
+          getProjectsWithUsage(),
+          getCurrentUserRole(),
+        ]);
         if (cancelled) return;
         setProjects((data as ProjectRow[]) ?? []);
+        setIsAdmin(role === "admin");
       } catch (e) {
         if (cancelled) return;
         const msg = e instanceof Error ? e.message : "Ошибка загрузки проектов";
@@ -170,6 +182,11 @@ export function ProjectsList() {
                 <p className="text-muted-foreground mt-0.5 text-xs">
                   Обновлён: {formatDate(p.updated_at)}
                 </p>
+              )}
+              {isAdmin && (
+                <div className="mt-1">
+                  <ProjectCostBadge usage={p.usage} />
+                </div>
               )}
             </div>
             <div className="flex shrink-0 items-center gap-2">

@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/client";
 import type { ProjectAnalysis } from "@/lib/types/project-analysis";
+import type { ProjectUsageSummary } from "@/lib/types/project-usage";
 
 const supabase = () => createClient();
 
@@ -12,6 +13,27 @@ export async function getProjects() {
     .order("updated_at", { ascending: false });
   if (error) throw error;
   return data;
+}
+
+export async function getProjectsWithUsage() {
+  const projects = await getProjects();
+
+  const projectIds = (projects ?? []).map((p: { id: string }) => p.id);
+  if (projectIds.length === 0) return projects ?? [];
+
+  const { data: usageData } = await supabase()
+    .from("project_usage_summary")
+    .select("*")
+    .in("project_id", projectIds);
+
+  const usageMap = new Map<string, ProjectUsageSummary>(
+    ((usageData ?? []) as ProjectUsageSummary[]).map((u) => [u.project_id, u])
+  );
+
+  return (projects ?? []).map((p: { id: string }) => ({
+    ...p,
+    usage: usageMap.get(p.id) ?? null,
+  }));
 }
 
 export async function getProject(id: string) {
@@ -258,4 +280,19 @@ export async function getProfile() {
     .single();
   if (error) return null;
   return data;
+}
+
+export async function getCurrentUserRole(): Promise<"admin" | "user" | null> {
+  const {
+    data: { user },
+  } = await supabase().auth.getUser();
+  if (!user) return null;
+
+  const { data } = await supabase()
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  return ((data?.role as "admin" | "user") ?? null);
 }
