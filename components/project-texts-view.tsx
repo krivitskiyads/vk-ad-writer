@@ -231,7 +231,11 @@ export function ProjectTextsView({ projectId }: ProjectTextsViewProps) {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const textsRef = useRef<StoredText[]>([]);
   const [texts, setTexts] = useState<StoredText[]>([]);
+  useEffect(() => {
+    textsRef.current = texts;
+  }, [texts]);
   const [hasExisting, setHasExisting] = useState(false);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -330,15 +334,14 @@ export function ProjectTextsView({ projectId }: ProjectTextsViewProps) {
           ...(t as GeneratedAdText),
         }));
 
-        let finalTexts: StoredText[] = [];
-        setTexts((prev) => {
-          finalTexts = append ? [...prev, ...mapped] : mapped;
-          return finalTexts;
-        });
+        const previousTexts = append ? textsRef.current : [];
+        const finalTexts: StoredText[] = [...previousTexts, ...mapped];
+
+        setTexts(finalTexts);
         setSelected({});
         setHasExisting(true);
 
-        // Сохраняем батч в Supabase
+        // Сохраняем батч в Supabase. finalTexts посчитан синхронно — никаких гонок.
         try {
           const payload = finalTexts.map(stripId) as unknown[];
           await saveGeneratedTexts(
