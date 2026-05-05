@@ -251,7 +251,7 @@ function CodeField({ label, value }: { label: string; value: string }) {
   );
 }
 
-function TechniqueCard({
+function TechniquePill({
   entry,
   selected,
   onToggle,
@@ -263,15 +263,15 @@ function TechniqueCard({
   const [modalOpen, setModalOpen] = useState(false);
 
   const pillClasses = cn(
-    "group flex w-full items-start justify-between gap-3 rounded-lg border px-3 py-2 text-left transition-colors",
-    "cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
+    "group inline-flex items-center gap-2 rounded-full border px-3 py-1 text-left text-xs font-medium transition-colors",
+    "cursor-pointer select-none outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
     selected
       ? "bg-[#7c3aed] text-white border-[#7c3aed]/40 hover:bg-[#6d28d9]"
       : "border-border bg-purple-100 text-purple-800 hover:bg-purple-200 dark:bg-purple-900/40 dark:text-purple-200 dark:hover:bg-purple-900/60"
   );
 
   const checkboxClasses = cn(
-    "mt-0.5 shrink-0 pointer-events-none",
+    "shrink-0 pointer-events-none",
     selected &&
       "border-white/70 data-checked:border-white data-checked:bg-white data-checked:text-[#7c3aed]"
   );
@@ -289,33 +289,19 @@ function TechniqueCard({
         <TooltipPrimitive.Trigger
           render={
             <div
-              role="button"
+              role="checkbox"
               tabIndex={0}
               className={pillClasses}
               onClick={() => onToggle(!selected)}
               onKeyDown={onKeyDown}
-              aria-pressed={selected}
+              aria-checked={selected}
             />
           }
           closeOnClick
         >
-          <div className="flex min-w-0 flex-1 items-start gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             <Checkbox checked={selected} className={checkboxClasses} />
-            <div className="min-w-0">
-              <div className={cn("text-xs font-semibold", selected && "text-white/90")}>
-                {entry.title}
-              </div>
-              {entry.short_description && (
-                <div
-                  className={cn(
-                    "mt-0.5 text-xs leading-relaxed",
-                    selected ? "text-white/85" : "text-purple-800/80"
-                  )}
-                >
-                  {entry.short_description}
-                </div>
-              )}
-            </div>
+            <span className="truncate">{entry.title}</span>
           </div>
 
           <button
@@ -616,9 +602,9 @@ function Section({
         <h3 className="text-sm font-semibold">{title}</h3>
         <span className="text-muted-foreground text-xs">({counter})</span>
       </div>
-      <div className="grid gap-2">
+      <div className="flex flex-wrap gap-2">
         {entries.map((entry) => (
-          <TechniqueCard
+          <TechniquePill
             key={entry.id}
             entry={entry}
             selected={selectedIds.includes(entry.id)}
