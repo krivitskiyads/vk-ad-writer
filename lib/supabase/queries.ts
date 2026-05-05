@@ -1,4 +1,8 @@
 import { createClient } from "@/lib/supabase/client";
+import type {
+  KnowledgeBaseEntry,
+  KnowledgeBaseSummary,
+} from "@/lib/types/knowledge-base";
 import type { ProjectAnalysis } from "@/lib/types/project-analysis";
 import type { ProjectUsageSummary } from "@/lib/types/project-usage";
 
@@ -191,6 +195,7 @@ export async function saveGeneratedTexts(
   tokensUsed: number,
   timeMs: number,
   model: string,
+  settingsSnapshot?: unknown,
   feedback?: string
 ) {
   const { data: existing } = await supabase()
@@ -211,6 +216,7 @@ export async function saveGeneratedTexts(
       tokens_used: tokensUsed,
       time_ms: timeMs,
       model,
+      settings_snapshot: settingsSnapshot ?? null,
       feedback,
     });
   if (error) throw error;
@@ -264,6 +270,43 @@ export async function getUsageStats() {
 // writeUsageLog вынесён в отдельный server-only модуль lib/usage-log.ts —
 // чтобы webpack не подтягивал next/headers в клиентский бандл через цепочку
 // клиентских импортов queries.ts.
+
+// ── База знаний ──
+
+export async function getKnowledgeMenu(): Promise<KnowledgeBaseSummary[]> {
+  const { data, error } = await supabase()
+    .from("knowledge_base")
+    .select(
+      "id, entry_type, title, short_description, applicable_to, tags, priority"
+    )
+    .eq("is_active", true)
+    .order("priority", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as KnowledgeBaseSummary[];
+}
+
+export async function getKnowledgeByIds(
+  ids: string[]
+): Promise<KnowledgeBaseEntry[]> {
+  if (ids.length === 0) return [];
+  const { data, error } = await supabase()
+    .from("knowledge_base")
+    .select("*")
+    .in("id", ids)
+    .eq("is_active", true);
+  if (error) throw error;
+  return (data ?? []) as KnowledgeBaseEntry[];
+}
+
+export async function getFullKnowledgeBase(): Promise<KnowledgeBaseEntry[]> {
+  const { data, error } = await supabase()
+    .from("knowledge_base")
+    .select("*")
+    .eq("is_active", true)
+    .order("priority", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as KnowledgeBaseEntry[];
+}
 
 // ── Профиль ──
 
