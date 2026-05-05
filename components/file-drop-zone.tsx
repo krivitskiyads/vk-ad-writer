@@ -32,6 +32,8 @@ type FileDropZoneProps = {
   hint?: string;
   /** Если true — компонент сам не управляет своим списком, только сообщает наверх. */
   multiple?: boolean;
+  /** Подпись CTA в диалоге вставки текста (default: "Добавить материал"). */
+  pasteSubmitLabel?: string;
 };
 
 const SUPPORTED_EXTS = ["pdf", "docx", "txt", "csv", "md"] as const;
@@ -93,6 +95,7 @@ export function FileDropZone({
   className,
   hint,
   multiple = true,
+  pasteSubmitLabel = "Добавить материал",
 }: FileDropZoneProps) {
   const [dragActive, setDragActive] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -246,6 +249,7 @@ export function FileDropZone({
         open={pasteOpen}
         onOpenChange={setPasteOpen}
         onSubmit={handleTextSubmit}
+        submitLabel={pasteSubmitLabel}
       />
     </>
   );
@@ -255,10 +259,12 @@ function PasteTextDialog({
   open,
   onOpenChange,
   onSubmit,
+  submitLabel,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onSubmit: (name: string, content: string) => void | Promise<void>;
+  submitLabel: string;
 }) {
   const [name, setName] = useState("");
   const [content, setContent] = useState("");
@@ -339,7 +345,7 @@ function PasteTextDialog({
             className="bg-[#7c3aed] text-white hover:bg-[#6d28d9]"
           >
             {busy && <Loader2 className="size-4 animate-spin" aria-hidden />}
-            Добавить материал
+            {submitLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

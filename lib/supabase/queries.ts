@@ -12,7 +12,7 @@ import type {
   ProjectAnalysisStatus,
 } from "@/lib/types/project";
 import type { Campaign } from "@/lib/types/campaign";
-import type { ProjectFile } from "@/lib/types/project-files";
+import type { ProjectFile, ProjectFileKind } from "@/lib/types/project-files";
 import type { CampaignFile } from "@/lib/types/campaign-files";
 import type {
   GeneratedAdText,
@@ -110,14 +110,21 @@ export async function deleteProject(projectId: string): Promise<void> {
 // ============================================================================
 
 export async function listProjectFiles(
-  projectId: string
+  projectId: string,
+  kind?: ProjectFileKind
 ): Promise<ProjectFile[]> {
   const supabase = await sb();
-  const { data, error } = await supabase
+  let query = supabase
     .from("project_files")
     .select("*")
     .eq("project_id", projectId)
     .order("created_at", { ascending: true });
+
+  if (kind) {
+    query = query.eq("kind", kind);
+  }
+
+  const { data, error } = await query;
   if (error) throw error;
   return (data ?? []) as ProjectFile[];
 }
@@ -129,6 +136,7 @@ export async function createProjectFile(
     content: string | null;
     file_type: string | null;
     size_bytes: number | null;
+    kind?: ProjectFileKind;
   }
 ): Promise<ProjectFile> {
   const supabase = await sb();
@@ -140,6 +148,7 @@ export async function createProjectFile(
       content: data.content,
       file_type: data.file_type,
       size_bytes: data.size_bytes,
+      kind: data.kind ?? "material",
     })
     .select("*")
     .single();

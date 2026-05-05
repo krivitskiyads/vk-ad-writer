@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { FileText } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -21,12 +21,15 @@ import type { ProjectFile } from "@/lib/types/project-files";
 
 type Props = {
   projectId: string;
-  initialFiles: ProjectFile[];
+  initialTexts: ProjectFile[];
 };
 
-export function ProjectMaterialsSection({ projectId, initialFiles }: Props) {
+export function ProjectSuccessfulTextsSection({
+  projectId,
+  initialTexts,
+}: Props) {
   const router = useRouter();
-  const [files, setFiles] = useState<ProjectFile[]>(initialFiles);
+  const [texts, setTexts] = useState<ProjectFile[]>(initialTexts);
   const [removingId, setRemovingId] = useState<string | null>(null);
 
   const uploadParsed = async (parsed: ParsedFile[]) => {
@@ -41,7 +44,7 @@ export function ProjectMaterialsSection({ projectId, initialFiles }: Props) {
             content: f.content,
             file_type: f.file_type,
             size_bytes: f.size_bytes,
-            kind: "material",
+            kind: "successful_text",
           }),
         });
         if (!res.ok) {
@@ -57,13 +60,13 @@ export function ProjectMaterialsSection({ projectId, initialFiles }: Props) {
       }
     }
     if (created.length > 0) {
-      setFiles((prev) => [...prev, ...created]);
-      toast.success(`Добавлено файлов: ${created.length}`);
+      setTexts((prev) => [...prev, ...created]);
+      toast.success(`Добавлено: ${created.length}`);
       router.refresh();
     }
   };
 
-  const removeFile = async (fileId: string) => {
+  const removeText = async (fileId: string) => {
     setRemovingId(fileId);
     try {
       const res = await fetch(
@@ -72,9 +75,9 @@ export function ProjectMaterialsSection({ projectId, initialFiles }: Props) {
       );
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? "Не удалось удалить файл");
+        throw new Error(data.error ?? "Не удалось удалить");
       }
-      setFiles((prev) => prev.filter((f) => f.id !== fileId));
+      setTexts((prev) => prev.filter((f) => f.id !== fileId));
       router.refresh();
     } catch (e) {
       const message = e instanceof Error ? e.message : "Ошибка удаления";
@@ -88,34 +91,39 @@ export function ProjectMaterialsSection({ projectId, initialFiles }: Props) {
     <Card className="border-border">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <FileText className="size-5 text-[#7c3aed]" aria-hidden />
-          Материалы клиента
+          <Sparkles className="size-5 text-[#7c3aed]" aria-hidden />
+          Удачные тексты прошлых кампаний
         </CardTitle>
         <CardDescription>
-          Брифы, прайсы, удачные посты и любые другие документы. Используются для
-          анализа ЦА и подсказок копирайтеру.
+          Тексты прошлых рекламных кампаний клиента, которые сработали. AI
+          учтёт их стиль и тон при генерации новых текстов.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {files.length > 0 && (
+        {texts.length > 0 && (
           <ul className="space-y-1.5">
-            {files.map((f) => (
+            {texts.map((f) => (
               <FileListItem
                 key={f.id}
                 file={f}
                 removing={removingId === f.id}
-                onRemove={() => removeFile(f.id)}
+                onRemove={() => removeText(f.id)}
               />
             ))}
           </ul>
         )}
+
+        {texts.length === 0 && (
+          <p className="text-xs text-muted-foreground">
+            Раздел опциональный — но качество текстов будет выше, если показать
+            AI примеры.
+          </p>
+        )}
+
         <FileDropZone
           onFilesParsed={uploadParsed}
-          hint={
-            files.length === 0
-              ? "Перетащите сюда первые материалы клиента. Поддерживаются PDF, DOCX, TXT, CSV."
-              : "Добавить ещё файлы"
-          }
+          hint="Перетащите файлы или вставьте текст с удачным постом, объявлением, креативом"
+          pasteSubmitLabel="Добавить удачный текст"
         />
       </CardContent>
     </Card>

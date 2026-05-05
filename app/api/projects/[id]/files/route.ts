@@ -5,10 +5,23 @@ import {
   listProjectFiles,
 } from "@/lib/supabase/queries";
 import { createServerSupabase } from "@/lib/supabase/server";
+import type { ProjectFileKind } from "@/lib/types/project-files";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
-export async function GET(_request: NextRequest, context: RouteContext) {
+const VALID_KINDS: ReadonlyArray<ProjectFileKind> = [
+  "material",
+  "successful_text",
+];
+
+function parseKind(raw: unknown): ProjectFileKind | undefined {
+  if (typeof raw !== "string") return undefined;
+  return VALID_KINDS.includes(raw as ProjectFileKind)
+    ? (raw as ProjectFileKind)
+    : undefined;
+}
+
+export async function GET(request: NextRequest, context: RouteContext) {
   const supabase = await createServerSupabase();
   const {
     data: { user },
@@ -18,8 +31,11 @@ export async function GET(_request: NextRequest, context: RouteContext) {
   }
 
   const { id } = await context.params;
+  const url = new URL(request.url);
+  const kind = parseKind(url.searchParams.get("kind"));
+
   try {
-    const files = await listProjectFiles(id);
+    const files = await listProjectFiles(id, kind);
     return NextResponse.json({ files });
   } catch (e) {
     console.error("[GET /api/projects/:id/files]", e);
@@ -58,6 +74,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     typeof b.size_bytes === "number" && Number.isFinite(b.size_bytes)
       ? b.size_bytes
       : null;
+  const kind = parseKind(b.kind);
 
   try {
     const file = await createProjectFile(id, {
@@ -65,6 +82,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       content,
       file_type,
       size_bytes,
+      kind,
     });
     return NextResponse.json({ file }, { status: 201 });
   } catch (e) {

@@ -5,6 +5,7 @@ import { ProjectCampaignsSection } from "@/components/project-campaigns-section"
 import { ProjectHeader } from "@/components/project-header";
 import { ProjectMaterialsSection } from "@/components/project-materials-section";
 import { ProjectStrategySection } from "@/components/project-strategy-section";
+import { ProjectSuccessfulTextsSection } from "@/components/project-successful-texts-section";
 import {
   getCurrentUserRole,
   getProject,
@@ -27,8 +28,9 @@ export default async function ProjectPage({ params }: PageProps) {
   const project = await getProject(id);
   if (!project) notFound();
 
-  const [files, campaigns, role] = await Promise.all([
-    listProjectFiles(id),
+  const [materials, successfulTexts, campaigns, role] = await Promise.all([
+    listProjectFiles(id, "material"),
+    listProjectFiles(id, "successful_text"),
     listCampaigns(id),
     getCurrentUserRole(),
   ]);
@@ -59,9 +61,17 @@ export default async function ProjectPage({ params }: PageProps) {
         admin={adminUsage}
       />
 
-      <ProjectMaterialsSection projectId={project.id} initialFiles={files} />
+      <ProjectMaterialsSection projectId={project.id} initialFiles={materials} />
 
-      <ProjectAnalysisSection project={project} filesCount={files.length} />
+      <ProjectSuccessfulTextsSection
+        projectId={project.id}
+        initialTexts={successfulTexts}
+      />
+
+      <ProjectAnalysisSection
+        project={project}
+        filesCount={materials.length}
+      />
 
       {project.analysis_status === "ready" && (
         <ProjectStrategySection

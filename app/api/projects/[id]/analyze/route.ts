@@ -260,7 +260,7 @@ export async function POST(
       );
     }
 
-    const files = await listProjectFiles(projectId);
+    const files = await listProjectFiles(projectId, "material");
     const systemPrompt = buildAnalystSystemPrompt(knowledgeMenu);
     const userPrompt = buildAnalystUserPrompt(project.description, files);
 
