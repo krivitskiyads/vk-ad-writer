@@ -4,24 +4,33 @@ import { calculateCostUsd } from "@/lib/pricing";
 import { getUsdRubRate } from "@/lib/currency";
 import { createServerSupabase } from "@/lib/supabase/server";
 
+export type UsageOperation =
+  | "analyze_project"
+  | "analyze_campaign"
+  | "generate"
+  | "regenerate";
+
 export type WriteUsageLogParams = {
-  user_id: string;
-  project_id: string;
-  action: "analyze" | "generate_text";
+  userId: string;
+  projectId: string | null;
+  campaignId: string | null;
+  operation: UsageOperation;
+  generatedTextId?: string | null;
   model: string;
-  input_tokens: number;
-  output_tokens: number;
-  cache_read_tokens?: number;
-  cache_creation_tokens?: number;
-  time_ms: number;
-  generated_text_id?: string | null;
-  parent_log_id?: string | null;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
 };
 
 /**
  * Записывает строку в public.usage_log: считает cost_usd по lib/pricing.ts,
  * подтягивает курс USD/RUB из lib/currency.ts (с кэшем в currency_rates),
  * вставляет полный набор колонок и возвращает запись (id).
+ *
+ * Привязка:
+ * - project_id: обычно всегда заполнен (расход всегда привязан к проекту-бизнесу)
+ * - campaign_id: null когда расход на уровне проекта (анализ ЦА)
  *
  * Все ошибки глушим: трекинг не должен ронять основной запрос.
  * Возвращает null, если запись не удалось вставить.
@@ -33,13 +42,13 @@ export async function writeUsageLog(
   params: WriteUsageLogParams
 ): Promise<{ id: string } | null> {
   try {
-    const cache_read_tokens = params.cache_read_tokens ?? 0;
-    const cache_creation_tokens = params.cache_creation_tokens ?? 0;
+    const cache_read_tokens = params.cacheReadTokens ?? 0;
+    const cache_creation_tokens = params.cacheWriteTokens ?? 0;
 
     const cost_usd = calculateCostUsd({
       model: params.model,
-      input_tokens: params.input_tokens,
-      output_tokens: params.output_tokens,
+      input_tokens: params.inputTokens,
+      output_tokens: params.outputTokens,
       cache_read_tokens,
       cache_creation_tokens,
     });
@@ -48,8 +57,8 @@ export async function writeUsageLog(
     const cost_rub = cost_usd * rate;
 
     const total_tokens =
-      params.input_tokens +
-      params.output_tokens +
+      params.inputTokens +
+      params.outputTokens +
       cache_read_tokens +
       cache_creation_tokens;
 
@@ -57,23 +66,21 @@ export async function writeUsageLog(
     const { data, error } = await supabase
       .from("usage_log")
       .insert({
-        user_id: params.user_id,
-        project_id: params.project_id,
-        action: params.action,
+        user_id: params.userId,
+        project_id: params.projectId,
+        campaign_id: params.campaignId,
+        operation: params.operation,
         model: params.model,
-        input_tokens: params.input_tokens,
-        output_tokens: params.output_tokens,
+        input_tokens: params.inputTokens,
+        output_tokens: params.outputTokens,
         cache_read_tokens,
         cache_creation_tokens,
         total_tokens,
         cost_usd,
         cost_rub,
         usd_rub_rate: rate,
-        time_ms: params.time_ms,
-        generated_text_id: params.generated_text_id ?? null,
-        parent_log_id: params.parent_log_id ?? null,
-        // was_billed остаётся дефолтом (false)
-        // subscription_plan_id остаётся null
+        generated_text_id: params.generatedTextId ?? null,
+        // billable / subscription_plan_id остаются дефолтными
         // markup_percent уже сохранён в currency_rates
       })
       .select("id")

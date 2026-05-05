@@ -23,3 +23,15 @@ export function isGeneratedTextsResponse(
   return Array.isArray(o.texts);
 }
 
+export type GeneratedTextBatch = {
+  id: string;
+  campaign_id: string;
+  batch_number: number;
+  texts: GeneratedAdText[];
+  tokens_used: number | null;
+  time_ms: number | null;
+  model: string | null;
+  settings_snapshot: unknown | null;
+  feedback: string | null;
+  created_at: string;
+};
