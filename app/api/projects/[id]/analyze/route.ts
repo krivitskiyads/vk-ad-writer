@@ -4,12 +4,24 @@ import type Anthropic from "@anthropic-ai/sdk";
 
 import { callClaude } from "@/lib/ai/claude-client";
 import { buildAnalystSystemPrompt } from "@/lib/prompts/analyst";
-import { getKnowledgeMenu } from "@/lib/supabase/queries";
+import {
+  getKnowledgeMenu,
+  getProject,
+  listProjectFiles,
+  setProjectAnalysis,
+  setProjectAnalysisStatus,
+} from "@/lib/supabase/queries";
 import { createServerSupabase } from "@/lib/supabase/server";
+import type { ProjectAnalysis } from "@/lib/types/project-analysis";
+import type { ProjectFile } from "@/lib/types/project-files";
 import type { SelectedTechniques } from "@/lib/types/knowledge-base";
 import { writeUsageLog } from "@/lib/usage-log";
 
 const ANALYZE_MODEL = "claude-sonnet-4-6";
+
+const JSON_UTF8 = {
+  "Content-Type": "application/json; charset=utf-8",
+} as const;
 
 const ANALYSIS_TOOL: Anthropic.Messages.Tool = {
   name: "submit_analysis",
@@ -28,7 +40,15 @@ const ANALYSIS_TOOL: Anthropic.Messages.Tool = {
       business: {
         type: "object" as const,
         additionalProperties: false,
-        required: ["niche", "niche_category", "business_type", "geo", "average_check", "usp", "description_summary"],
+        required: [
+          "niche",
+          "niche_category",
+          "business_type",
+          "geo",
+          "average_check",
+          "usp",
+          "description_summary",
+        ],
         properties: {
           niche: { type: "string" as const },
           niche_category: { type: "string" as const },
@@ -44,7 +64,16 @@ const ANALYSIS_TOOL: Anthropic.Messages.Tool = {
         items: {
           type: "object" as const,
           additionalProperties: false,
-          required: ["name", "description", "demographics", "pain_points", "desires", "objections", "triggers", "priority"],
+          required: [
+            "name",
+            "description",
+            "demographics",
+            "pain_points",
+            "desires",
+            "objections",
+            "triggers",
+            "priority",
+          ],
           properties: {
             name: { type: "string" as const },
             description: { type: "string" as const },
@@ -59,10 +88,22 @@ const ANALYSIS_TOOL: Anthropic.Messages.Tool = {
                 income: { type: "string" as const },
               },
             },
-            pain_points: { type: "array" as const, items: { type: "string" as const } },
-            desires: { type: "array" as const, items: { type: "string" as const } },
-            objections: { type: "array" as const, items: { type: "string" as const } },
-            triggers: { type: "array" as const, items: { type: "string" as const } },
+            pain_points: {
+              type: "array" as const,
+              items: { type: "string" as const },
+            },
+            desires: {
+              type: "array" as const,
+              items: { type: "string" as const },
+            },
+            objections: {
+              type: "array" as const,
+              items: { type: "string" as const },
+            },
+            triggers: {
+              type: "array" as const,
+              items: { type: "string" as const },
+            },
             priority: { type: "string" as const },
           },
         },
@@ -74,7 +115,10 @@ const ANALYSIS_TOOL: Anthropic.Messages.Tool = {
         properties: {
           main_message: { type: "string" as const },
           tone_of_voice: { type: "string" as const },
-          key_benefits: { type: "array" as const, items: { type: "string" as const } },
+          key_benefits: {
+            type: "array" as const,
+            items: { type: "string" as const },
+          },
         },
       },
       warnings: {
@@ -115,6 +159,25 @@ const ANALYSIS_TOOL: Anthropic.Messages.Tool = {
   },
 };
 
+function pickAnalysis(content: unknown): ProjectAnalysis | null {
+  if (typeof content !== "object" || content === null) return null;
+  const o = content as Record<string, unknown>;
+  if (typeof o.business !== "object" || o.business === null) return null;
+  return {
+    business: o.business as ProjectAnalysis["business"],
+    segments: Array.isArray(o.segments)
+      ? (o.segments as ProjectAnalysis["segments"])
+      : [],
+    positioning:
+      typeof o.positioning === "object" &&
+      o.positioning !== null &&
+      !Array.isArray(o.positioning)
+        ? (o.positioning as ProjectAnalysis["positioning"])
+        : {},
+    warnings: Array.isArray(o.warnings) ? (o.warnings as string[]) : [],
+  };
+}
+
 function pickSelectedTechniques(content: unknown): SelectedTechniques | null {
   if (typeof content !== "object" || content === null) return null;
   const raw = (content as { selected_techniques?: unknown }).selected_techniques;
@@ -134,48 +197,26 @@ function pickSelectedTechniques(content: unknown): SelectedTechniques | null {
   return { triggers, formulas, structures, reasoning };
 }
 
-const JSON_UTF8 = {
-  "Content-Type": "application/json; charset=utf-8",
-} as const;
-
-type ProjectFileContentEntry = { fileName: string; content: string };
-
-function parseProjectFilesContent(body: unknown): ProjectFileContentEntry[] {
-  if (typeof body !== "object" || body === null) return [];
-  if (!("project_files_content" in body)) return [];
-  const raw = (body as { project_files_content: unknown })
-    .project_files_content;
-  if (!Array.isArray(raw)) return [];
-  return raw.flatMap((x): ProjectFileContentEntry[] => {
-    if (typeof x !== "object" || x === null) return [];
-    const fileName =
-      "fileName" in x && typeof x.fileName === "string" ? x.fileName : null;
-    const content =
-      "content" in x && typeof x.content === "string" ? x.content : null;
-    if (fileName === null || content === null) return [];
-    return [{ fileName, content }];
-  });
-}
-
 function buildAnalystUserPrompt(
-  description: string,
-  files: ProjectFileContentEntry[]
+  description: string | null,
+  files: ProjectFile[]
 ): string {
-  const desc = description.trim();
-  let userPrompt = `Описание проекта: ${desc}`;
-  if (files.length > 0) {
-    const blocks = files
-      .map((f) => `--- Файл: ${f.fileName} ---\n${f.content}`)
+  const desc = (description ?? "").trim();
+  let userPrompt = desc ? `Описание проекта: ${desc}` : "Описание проекта: (не задано)";
+  const filesWithContent = files.filter((f) => (f.content ?? "").trim().length > 0);
+  if (filesWithContent.length > 0) {
+    const blocks = filesWithContent
+      .map((f) => `--- Файл: ${f.name} ---\n${f.content}`)
       .join("\n\n");
     userPrompt += `\n\nСодержимое загруженных файлов:\n\n${blocks}`;
   }
   userPrompt +=
-    "\n\nВАЖНО: Верни ответ СТРОГО в формате JSON-объекта с полями business, segments, positioning, warnings. НЕ возвращай массив, НЕ возвращай список, НЕ возвращай текст. Только JSON-объект.";
+    "\n\nВАЖНО: Верни ответ СТРОГО в формате JSON-объекта с полями business, segments, positioning, warnings, selected_techniques. НЕ возвращай массив, НЕ возвращай список, НЕ возвращай текст. Только JSON-объект.";
   return userPrompt;
 }
 
 export async function POST(
-  request: NextRequest,
+  _request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   const { id: projectId } = await context.params;
@@ -187,28 +228,28 @@ export async function POST(
     );
   }
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
+  const supabase = await createServerSupabase();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
     return NextResponse.json(
-      { error: "Некорректное тело запроса" },
-      { status: 400, headers: JSON_UTF8 }
+      { error: "Unauthorized" },
+      { status: 401, headers: JSON_UTF8 }
     );
   }
 
-  const description =
-    typeof body === "object" &&
-    body !== null &&
-    "description" in body &&
-    typeof (body as { description: unknown }).description === "string"
-      ? (body as { description: string }).description
-      : "";
-
-  const projectFilesContent = parseProjectFilesContent(body);
-  const userPrompt = buildAnalystUserPrompt(description, projectFilesContent);
-
   try {
+    const project = await getProject(projectId);
+    if (!project) {
+      return NextResponse.json(
+        { error: "Проект не найден" },
+        { status: 404, headers: JSON_UTF8 }
+      );
+    }
+
+    await setProjectAnalysisStatus(projectId, "analyzing");
+
     let knowledgeMenu: Awaited<ReturnType<typeof getKnowledgeMenu>> = [];
     try {
       knowledgeMenu = await getKnowledgeMenu();
@@ -219,18 +260,19 @@ export async function POST(
       );
     }
 
+    const files = await listProjectFiles(projectId);
     const systemPrompt = buildAnalystSystemPrompt(knowledgeMenu);
-    console.log(
-      "[analyze] system prompt prefix:",
-      systemPrompt.slice(0, 100),
-      "| length:",
-      systemPrompt.length,
-      "| menu items:",
-      knowledgeMenu.length
-    );
+    const userPrompt = buildAnalystUserPrompt(project.description, files);
+
+    console.log("[analyze] starting", {
+      projectId,
+      filesCount: files.length,
+      menuItems: knowledgeMenu.length,
+      systemPromptLength: systemPrompt.length,
+    });
 
     const start = performance.now();
-    const { content, tokensUsed, timeMs, usage } = await callClaude({
+    const { content, usage } = await callClaude({
       systemPrompt,
       userPrompt,
       temperature: 0.4,
@@ -240,73 +282,59 @@ export async function POST(
     });
     const time_ms = Math.round(performance.now() - start);
 
-    const selectedTechniques = pickSelectedTechniques(content);
-    if (!selectedTechniques) {
-      console.error(
-        "[analyze] selected_techniques отсутствует или невалидно в ответе модели — продолжаем без сохранения техник"
+    const analysis = pickAnalysis(content);
+    const techniques = pickSelectedTechniques(content);
+
+    if (!analysis) {
+      await setProjectAnalysisStatus(projectId, "failed");
+      return NextResponse.json(
+        { error: "Аналитик вернул некорректный ответ" },
+        { status: 502, headers: JSON_UTF8 }
       );
     }
 
-    // Логируем расход токенов в usage_log. Не блокируем респонс при ошибке.
+    const safeTechniques: SelectedTechniques = techniques ?? {
+      triggers: [],
+      formulas: [],
+      structures: [],
+      reasoning: "",
+    };
+
+    const updatedProject = await setProjectAnalysis(
+      projectId,
+      analysis,
+      safeTechniques
+    );
+
     try {
-      const supabase = await createServerSupabase();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (user) {
-        await writeUsageLog({
-          user_id: user.id,
-          project_id: projectId,
-          action: "analyze",
-          model: ANALYZE_MODEL,
-          input_tokens: usage.input_tokens,
-          output_tokens: usage.output_tokens,
-          cache_read_tokens: usage.cache_read_tokens,
-          cache_creation_tokens: usage.cache_creation_tokens,
-          time_ms,
-        });
-      }
+      await writeUsageLog({
+        userId: user.id,
+        projectId,
+        campaignId: null,
+        operation: "analyze_project",
+        model: ANALYZE_MODEL,
+        inputTokens: usage.input_tokens,
+        outputTokens: usage.output_tokens,
+        cacheReadTokens: usage.cache_read_tokens,
+        cacheWriteTokens: usage.cache_creation_tokens,
+      });
     } catch (logErr) {
       console.error("[analyze] usage log failed (non-fatal)", logErr);
     }
 
-    // Сохраняем selected_techniques в projects напрямую — клиентский saveAnalysis
-    // обновляет analysis/selected_segments/status/updated_at и selected_techniques не трогает.
-    if (selectedTechniques) {
-      try {
-        const supabase = await createServerSupabase();
-        const { error: updErr } = await supabase
-          .from("projects")
-          .update({ selected_techniques: selectedTechniques })
-          .eq("id", projectId);
-        if (updErr) {
-          console.error(
-            "[analyze] save selected_techniques failed (non-fatal)",
-            updErr
-          );
-        }
-      } catch (e) {
-        console.error(
-          "[analyze] save selected_techniques exception (non-fatal)",
-          e
-        );
-      }
-    }
+    console.log("[analyze] done", { projectId, time_ms });
 
-    const responseBody = {
-      analysis: content === undefined ? null : content,
-      selected_techniques: selectedTechniques,
-      tokensUsed,
-      timeMs,
-    };
-    console.log(
-      "[analyze] response payload (full, before NextResponse.json)",
-      responseBody
+    return NextResponse.json(
+      { project: updatedProject },
+      { headers: JSON_UTF8 }
     );
-
-    return NextResponse.json(responseBody, { headers: JSON_UTF8 });
   } catch (e) {
     console.error("[analyze]", e);
+    try {
+      await setProjectAnalysisStatus(projectId, "failed");
+    } catch (statusErr) {
+      console.error("[analyze] failed to mark status (non-fatal)", statusErr);
+    }
     const message =
       e instanceof Error ? e.message : "Ошибка при обращении к Claude API";
     return NextResponse.json(

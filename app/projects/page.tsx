@@ -1,39 +1,39 @@
-import { CreateProjectDialog } from "@/components/create-project-dialog";
-import { ProjectsList } from "@/components/projects-list";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { redirect } from "next/navigation";
 
-export default function ProjectsPage() {
+import { listProjects } from "@/lib/supabase/queries";
+import { createServerSupabase } from "@/lib/supabase/server";
+
+export default async function ProjectsPage() {
+  const supabase = await createServerSupabase();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const projects = await listProjects(user.id);
+
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="notion-page-title">Проекты</h1>
-          <p className="notion-page-subtitle">
-            Рекламные тексты для ВКонтакте по вашим брифам
-          </p>
-        </div>
-        <CreateProjectDialog />
-      </div>
+    <div className="container mx-auto py-8">
+      <h1 className="text-2xl font-semibold mb-6">Проекты</h1>
 
-      <Card className="border-border">
-        <CardHeader>
-          <CardTitle className="text-[1.38rem] font-bold tracking-[-0.02em]">
-            Список проектов
-          </CardTitle>
-          <CardDescription>
-            Проекты хранят брифы и сгенерированные объявления
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ProjectsList />
-        </CardContent>
-      </Card>
+      {projects.length === 0 ? (
+        <p className="text-muted-foreground">У вас пока нет проектов.</p>
+      ) : (
+        <ul className="space-y-2">
+          {projects.map((p) => (
+            <li key={p.project_id} className="border rounded-lg p-4">
+              <div className="font-medium">{p.name}</div>
+              <div className="text-sm text-muted-foreground">
+                {p.campaign_count} кампаний · {p.request_count} запросов
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="mt-6 text-sm text-muted-foreground">
+        Создание новых проектов и кампаний — в разработке (этап 3).
+      </div>
     </div>
   );
 }
