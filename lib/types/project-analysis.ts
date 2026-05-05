@@ -1,3 +1,5 @@
+import type { SelectedTechniques } from "@/lib/types/knowledge-base";
+
 /** Структура ответа аналитика (JSON из Claude). */
 export type ProjectAnalysis = {
   business: {
@@ -16,6 +18,7 @@ export type ProjectAnalysis = {
     key_benefits?: string[];
   };
   warnings: string[];
+  selected_techniques?: SelectedTechniques;
 };
 
 export type AnalysisSegment = {

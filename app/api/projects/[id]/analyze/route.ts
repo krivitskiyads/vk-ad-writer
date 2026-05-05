@@ -3,8 +3,10 @@ import { NextResponse, type NextRequest } from "next/server";
 import type Anthropic from "@anthropic-ai/sdk";
 
 import { callClaude } from "@/lib/ai/claude-client";
-import { ANALYST_SYSTEM_PROMPT } from "@/lib/prompts/analyst";
+import { buildAnalystSystemPrompt } from "@/lib/prompts/analyst";
+import { getKnowledgeMenu } from "@/lib/supabase/queries";
 import { createServerSupabase } from "@/lib/supabase/server";
+import type { SelectedTechniques } from "@/lib/types/knowledge-base";
 import { writeUsageLog } from "@/lib/usage-log";
 
 const ANALYZE_MODEL = "claude-sonnet-4-6";
@@ -15,7 +17,13 @@ const ANALYSIS_TOOL: Anthropic.Messages.Tool = {
   input_schema: {
     type: "object" as const,
     additionalProperties: false,
-    required: ["business", "segments", "positioning", "warnings"],
+    required: [
+      "business",
+      "segments",
+      "positioning",
+      "warnings",
+      "selected_techniques",
+    ],
     properties: {
       business: {
         type: "object" as const,
@@ -73,9 +81,58 @@ const ANALYSIS_TOOL: Anthropic.Messages.Tool = {
         type: "array" as const,
         items: { type: "string" as const },
       },
+      selected_techniques: {
+        type: "object" as const,
+        additionalProperties: false,
+        required: ["triggers", "formulas", "structures", "reasoning"],
+        properties: {
+          triggers: {
+            type: "array" as const,
+            items: { type: "string" as const },
+            description:
+              "Массив id триггеров из базы знаний (2-4 штуки, комбинировать из разных групп)",
+          },
+          formulas: {
+            type: "array" as const,
+            items: { type: "string" as const },
+            description:
+              "Массив id формул (обычно 1 элемент: AIDA, PAS, PPPP или FAB)",
+          },
+          structures: {
+            type: "array" as const,
+            items: { type: "string" as const },
+            description:
+              "Массив id структур (1-2 элемента, под формат текста и нишу)",
+          },
+          reasoning: {
+            type: "string" as const,
+            description:
+              "Обоснование выбора техник: почему именно эти подходят этому проекту. 2-4 предложения.",
+          },
+        },
+      },
     },
   },
 };
+
+function pickSelectedTechniques(content: unknown): SelectedTechniques | null {
+  if (typeof content !== "object" || content === null) return null;
+  const raw = (content as { selected_techniques?: unknown }).selected_techniques;
+  if (typeof raw !== "object" || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  const triggers = Array.isArray(r.triggers)
+    ? r.triggers.filter((x): x is string => typeof x === "string")
+    : null;
+  const formulas = Array.isArray(r.formulas)
+    ? r.formulas.filter((x): x is string => typeof x === "string")
+    : null;
+  const structures = Array.isArray(r.structures)
+    ? r.structures.filter((x): x is string => typeof x === "string")
+    : null;
+  const reasoning = typeof r.reasoning === "string" ? r.reasoning : null;
+  if (!triggers || !formulas || !structures || reasoning === null) return null;
+  return { triggers, formulas, structures, reasoning };
+}
 
 const JSON_UTF8 = {
   "Content-Type": "application/json; charset=utf-8",
@@ -152,14 +209,29 @@ export async function POST(
   const userPrompt = buildAnalystUserPrompt(description, projectFilesContent);
 
   try {
+    let knowledgeMenu: Awaited<ReturnType<typeof getKnowledgeMenu>> = [];
+    try {
+      knowledgeMenu = await getKnowledgeMenu();
+    } catch (kbErr) {
+      console.error(
+        "[analyze] getKnowledgeMenu failed (non-fatal, fallback to empty menu)",
+        kbErr
+      );
+    }
+
+    const systemPrompt = buildAnalystSystemPrompt(knowledgeMenu);
     console.log(
       "[analyze] system prompt prefix:",
-      ANALYST_SYSTEM_PROMPT.slice(0, 100)
+      systemPrompt.slice(0, 100),
+      "| length:",
+      systemPrompt.length,
+      "| menu items:",
+      knowledgeMenu.length
     );
 
     const start = performance.now();
     const { content, tokensUsed, timeMs, usage } = await callClaude({
-      systemPrompt: ANALYST_SYSTEM_PROMPT,
+      systemPrompt,
       userPrompt,
       temperature: 0.4,
       tool: ANALYSIS_TOOL,
@@ -167,6 +239,13 @@ export async function POST(
       model: ANALYZE_MODEL,
     });
     const time_ms = Math.round(performance.now() - start);
+
+    const selectedTechniques = pickSelectedTechniques(content);
+    if (!selectedTechniques) {
+      console.error(
+        "[analyze] selected_techniques отсутствует или невалидно в ответе модели — продолжаем без сохранения техник"
+      );
+    }
 
     // Логируем расход токенов в usage_log. Не блокируем респонс при ошибке.
     try {
@@ -191,8 +270,32 @@ export async function POST(
       console.error("[analyze] usage log failed (non-fatal)", logErr);
     }
 
+    // Сохраняем selected_techniques в projects напрямую — клиентский saveAnalysis
+    // обновляет analysis/selected_segments/status/updated_at и selected_techniques не трогает.
+    if (selectedTechniques) {
+      try {
+        const supabase = await createServerSupabase();
+        const { error: updErr } = await supabase
+          .from("projects")
+          .update({ selected_techniques: selectedTechniques })
+          .eq("id", projectId);
+        if (updErr) {
+          console.error(
+            "[analyze] save selected_techniques failed (non-fatal)",
+            updErr
+          );
+        }
+      } catch (e) {
+        console.error(
+          "[analyze] save selected_techniques exception (non-fatal)",
+          e
+        );
+      }
+    }
+
     const responseBody = {
       analysis: content === undefined ? null : content,
+      selected_techniques: selectedTechniques,
       tokensUsed,
       timeMs,
     };

@@ -27,6 +27,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { StrategyView } from "@/components/strategy-view";
 import {
   getProject,
   getProjectFiles,
@@ -39,7 +40,25 @@ import {
   type AnalysisSegment,
   type ProjectAnalysis,
 } from "@/lib/types/project-analysis";
+import type { SelectedTechniques } from "@/lib/types/knowledge-base";
 import { cn } from "@/lib/utils";
+
+function pickSelectedTechniques(raw: unknown): SelectedTechniques | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  const triggers = Array.isArray(r.triggers)
+    ? r.triggers.filter((x): x is string => typeof x === "string")
+    : null;
+  const formulas = Array.isArray(r.formulas)
+    ? r.formulas.filter((x): x is string => typeof x === "string")
+    : null;
+  const structures = Array.isArray(r.structures)
+    ? r.structures.filter((x): x is string => typeof x === "string")
+    : null;
+  const reasoning = typeof r.reasoning === "string" ? r.reasoning : "";
+  if (!triggers || !formulas || !structures) return null;
+  return { triggers, formulas, structures, reasoning };
+}
 
 const STORAGE_KEY_DESCRIPTION = "project_description";
 const STORAGE_KEY_PROJECT_FILES_CONTENT = "project_files_content";
@@ -237,6 +256,8 @@ export function ProjectAnalysisView({ projectId }: ProjectAnalysisViewProps) {
   const [expandedMap, setExpandedMap] = useState<Record<number, boolean>>({});
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<Partial<AnalysisSegment>>({});
+  const [selectedTechniques, setSelectedTechniques] =
+    useState<SelectedTechniques | null>(null);
 
   const runAnalysis = useCallback(async () => {
     setLoading(true);
@@ -351,6 +372,20 @@ export function ProjectAnalysisView({ projectId }: ProjectAnalysisViewProps) {
 
       if (normalized) {
         setAnalysis(normalized);
+
+        // selected_techniques приходит и отдельным полем в респонсе, и внутри analysis
+        const techFromResponse =
+          typeof data === "object" && data !== null
+            ? pickSelectedTechniques(
+                (data as { selected_techniques?: unknown }).selected_techniques
+              )
+            : null;
+        const techFromAnalysis = pickSelectedTechniques(
+          (picked as { selected_techniques?: unknown } | null)
+            ?.selected_techniques
+        );
+        setSelectedTechniques(techFromResponse ?? techFromAnalysis ?? null);
+
         try {
           await saveAnalysis(projectId, normalized, []);
         } catch (e) {
@@ -446,6 +481,10 @@ export function ProjectAnalysisView({ projectId }: ProjectAnalysisViewProps) {
             }
             setSelectedIndices(sel);
           }
+
+          const rawTechniques = (project as { selected_techniques?: unknown } | null)
+            ?.selected_techniques;
+          setSelectedTechniques(pickSelectedTechniques(rawTechniques));
 
           const maybeDesc = (project as { description?: unknown } | null)
             ?.description;
@@ -1103,6 +1142,8 @@ export function ProjectAnalysisView({ projectId }: ProjectAnalysisViewProps) {
               )}
             </CardContent>
           </Card>
+
+          <StrategyView selected={selectedTechniques} />
 
           {analysis.warnings.length > 0 && (
             <Card
