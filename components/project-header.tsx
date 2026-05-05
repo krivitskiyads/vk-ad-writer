@@ -2,9 +2,26 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Check, ChevronRight, Loader2, Pencil, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import {
+  Check,
+  ChevronRight,
+  Loader2,
+  Pencil,
+  Trash2,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
@@ -24,10 +41,13 @@ export function ProjectHeader({
   description,
   admin,
 }: Props) {
+  const router = useRouter();
   const [name, setName] = useState(initialName);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(initialName);
   const [saving, setSaving] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -81,6 +101,27 @@ export function ProjectHeader({
     } else if (e.key === "Escape") {
       e.preventDefault();
       cancelEdit();
+    }
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/projects/${projectId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "Не удалось удалить проект");
+      }
+      toast.success("Проект удалён");
+      setDeleteOpen(false);
+      router.push("/projects");
+      router.refresh();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Ошибка удаления";
+      toast.error(message);
+      setDeleting(false);
     }
   };
 
@@ -156,15 +197,59 @@ export function ProjectHeader({
           )}
         </div>
 
-        {admin && (
-          <div className="shrink-0 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-            <div className="font-medium text-foreground">
-              💰 {admin.total_cost_rub.toFixed(2)} ₽
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          {admin && (
+            <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              <div className="font-medium text-foreground">
+                💰 {admin.total_cost_rub.toFixed(2)} ₽
+              </div>
+              <div>⚡ {admin.request_count} запросов</div>
             </div>
-            <div>⚡ {admin.request_count} запросов</div>
-          </div>
-        )}
+          )}
+          <button
+            type="button"
+            onClick={() => setDeleteOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-destructive/80 transition-colors hover:bg-destructive/10 hover:text-destructive"
+          >
+            <Trash2 className="size-3.5" aria-hidden />
+            Удалить проект
+          </button>
+        </div>
       </div>
+
+      <Dialog
+        open={deleteOpen}
+        onOpenChange={(v) => !deleting && setDeleteOpen(v)}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Удалить проект «{name}»?</DialogTitle>
+            <DialogDescription>
+              Будут безвозвратно удалены: все материалы, анализ ЦА, кампании и
+              сгенерированные тексты.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setDeleteOpen(false)}
+              disabled={deleting}
+            >
+              Отмена
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => void handleDelete()}
+              disabled={deleting}
+            >
+              {deleting && <Loader2 className="size-4 animate-spin" aria-hidden />}
+              Удалить
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

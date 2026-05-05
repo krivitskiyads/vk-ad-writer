@@ -1,10 +1,21 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { Upload, Loader2, X } from "lucide-react";
+import { ClipboardPaste, FileText, Loader2, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
 export type ParsedFile = {
@@ -85,6 +96,7 @@ export function FileDropZone({
 }: FileDropZoneProps) {
   const [dragActive, setDragActive] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [pasteOpen, setPasteOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFiles = useCallback(
@@ -148,47 +160,190 @@ export function FileDropZone({
     }
   };
 
+  const handleTextSubmit = async (name: string, content: string) => {
+    const trimmedName = name.trim();
+    const trimmedContent = content.trim();
+    if (!trimmedName || !trimmedContent) {
+      toast.error("Заполните название и текст материала");
+      return;
+    }
+    setPasteOpen(false);
+    const parsed: ParsedFile = {
+      name: trimmedName,
+      content: trimmedContent,
+      file_type: "text/plain",
+      size_bytes: trimmedContent.length,
+    };
+    try {
+      await onFilesParsed([parsed]);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Не удалось добавить материал";
+      toast.error(message);
+    }
+  };
+
   return (
-    <div
-      onDragOver={onDragOver}
-      onDragEnter={onDragOver}
-      onDragLeave={onDragLeave}
-      onDrop={onDrop}
-      className={cn(
-        "border-2 border-dashed rounded-xl p-6 text-center transition-colors",
-        dragActive
-          ? "border-[#7c3aed] bg-[#7c3aed]/5"
-          : "border-border bg-muted/30",
-        busy && "opacity-70 pointer-events-none",
-        className
-      )}
-    >
-      <input
-        ref={inputRef}
-        type="file"
-        accept=".pdf,.docx,.txt,.csv,.md"
-        multiple={multiple}
-        className="sr-only"
-        onChange={onChange}
+    <>
+      <div
+        onDragOver={onDragOver}
+        onDragEnter={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+        className={cn(
+          "border-2 border-dashed rounded-xl p-6 text-center transition-colors",
+          dragActive
+            ? "border-[#7c3aed] bg-[#7c3aed]/5"
+            : "border-border bg-muted/30",
+          busy && "opacity-70 pointer-events-none",
+          className
+        )}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".pdf,.docx,.txt,.csv,.md"
+          multiple={multiple}
+          className="sr-only"
+          onChange={onChange}
+        />
+        {busy ? (
+          <div className="flex flex-col items-center gap-2 py-2 text-muted-foreground">
+            <Loader2 className="size-6 animate-spin" aria-hidden />
+            <span className="text-sm">Читаем файлы…</span>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-2 py-2">
+            <Upload className="size-7 text-muted-foreground" aria-hidden />
+            <p className="text-sm text-muted-foreground max-w-md">
+              {hint ??
+                "Перетащите сюда материалы клиента — брифы, прайсы, удачные посты, ссылки на сайт. Поддерживаются PDF, DOCX, TXT, CSV."}
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onPickClick}
+              >
+                Выбрать файлы
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => setPasteOpen(true)}
+              >
+                <ClipboardPaste className="size-3.5" aria-hidden />
+                Вставить текст
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <PasteTextDialog
+        open={pasteOpen}
+        onOpenChange={setPasteOpen}
+        onSubmit={handleTextSubmit}
       />
-      {busy ? (
-        <div className="flex flex-col items-center gap-2 py-2 text-muted-foreground">
-          <Loader2 className="size-6 animate-spin" aria-hidden />
-          <span className="text-sm">Читаем файлы…</span>
+    </>
+  );
+}
+
+function PasteTextDialog({
+  open,
+  onOpenChange,
+  onSubmit,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onSubmit: (name: string, content: string) => void | Promise<void>;
+}) {
+  const [name, setName] = useState("");
+  const [content, setContent] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const reset = () => {
+    setName("");
+    setContent("");
+    setBusy(false);
+  };
+
+  const handleClose = (next: boolean) => {
+    if (!next) reset();
+    onOpenChange(next);
+  };
+
+  const submit = async () => {
+    setBusy(true);
+    try {
+      await onSubmit(name, content);
+      reset();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <FileText className="size-4 text-[#7c3aed]" aria-hidden />
+            Вставить текст-материал
+          </DialogTitle>
+          <DialogDescription>
+            Удобно для брифов, цитат и фрагментов с сайта, когда нет отдельного
+            файла.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="paste-name">Название</Label>
+            <Input
+              id="paste-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Например: Описание ниши клиента"
+              disabled={busy}
+              autoFocus
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="paste-content">Текст</Label>
+            <Textarea
+              id="paste-content"
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder="Вставьте текст материала: бриф, описание, цитаты, что угодно"
+              disabled={busy}
+              rows={10}
+              className="min-h-[200px]"
+            />
+          </div>
         </div>
-      ) : (
-        <div className="flex flex-col items-center gap-2 py-2">
-          <Upload className="size-7 text-muted-foreground" aria-hidden />
-          <p className="text-sm text-muted-foreground max-w-md">
-            {hint ??
-              "Перетащите сюда материалы клиента — брифы, прайсы, удачные посты, ссылки на сайт. Поддерживаются PDF, DOCX, TXT, CSV."}
-          </p>
-          <Button type="button" variant="outline" size="sm" onClick={onPickClick}>
-            Выбрать файлы
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => handleClose(false)}
+            disabled={busy}
+          >
+            Отмена
           </Button>
-        </div>
-      )}
-    </div>
+          <Button
+            type="button"
+            onClick={() => void submit()}
+            disabled={busy || !name.trim() || !content.trim()}
+            className="bg-[#7c3aed] text-white hover:bg-[#6d28d9]"
+          >
+            {busy && <Loader2 className="size-4 animate-spin" aria-hidden />}
+            Добавить материал
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -199,6 +354,18 @@ type FileListItemFile = {
   file_type?: string | null;
 };
 
+const FILE_EXTENSIONS = ["pdf", "docx", "doc", "txt", "csv", "md"] as const;
+
+function isTextMaterial(file: FileListItemFile): boolean {
+  if (file.file_type === "text/plain") {
+    const dot = file.name.lastIndexOf(".");
+    if (dot < 0) return true;
+    const ext = file.name.slice(dot + 1).toLowerCase();
+    return !FILE_EXTENSIONS.includes(ext as (typeof FILE_EXTENSIONS)[number]);
+  }
+  return false;
+}
+
 export function FileListItem({
   file,
   onRemove,
@@ -208,21 +375,36 @@ export function FileListItem({
   onRemove?: () => void;
   removing?: boolean;
 }) {
+  const isText = isTextMaterial(file);
   const sizeKb =
     typeof file.size_bytes === "number" && file.size_bytes > 0
       ? Math.max(1, Math.round(file.size_bytes / 1024))
       : null;
+  const typeLabel = isText
+    ? "текст"
+    : file.file_type && file.file_type !== "text/plain"
+      ? file.file_type
+      : null;
   return (
     <li className="flex items-center justify-between gap-3 rounded-md border border-border bg-card px-3 py-2 text-sm">
-      <div className="flex min-w-0 flex-1 items-baseline gap-2">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <FileText
+          className={cn(
+            "size-4 shrink-0",
+            isText ? "text-[#7c3aed]" : "text-muted-foreground"
+          )}
+          aria-hidden
+        />
         <span className="truncate font-medium">{file.name}</span>
-        {file.file_type && (
-          <span className="text-xs uppercase text-muted-foreground">
-            {file.file_type}
+        {typeLabel && (
+          <span className="shrink-0 text-xs uppercase text-muted-foreground">
+            {typeLabel}
           </span>
         )}
         {sizeKb !== null && (
-          <span className="text-xs text-muted-foreground">{sizeKb} КБ</span>
+          <span className="shrink-0 text-xs text-muted-foreground">
+            {sizeKb} КБ
+          </span>
         )}
       </div>
       {onRemove && (

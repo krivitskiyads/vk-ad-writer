@@ -2,9 +2,26 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Briefcase, Check, Pencil, X, Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import {
+  Briefcase,
+  Check,
+  Loader2,
+  Pencil,
+  Trash2,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
@@ -53,10 +70,13 @@ function pluralCampaigns(n: number): string {
 }
 
 export function ProjectCard({ project, isAdmin }: Props) {
+  const router = useRouter();
   const [name, setName] = useState(project.name);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(project.name);
   const [saving, setSaving] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -122,7 +142,29 @@ export function ProjectCard({ project, isAdmin }: Props) {
     }
   };
 
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/projects/${project.project_id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "Не удалось удалить проект");
+      }
+      toast.success("Проект удалён");
+      setDeleteOpen(false);
+      router.refresh();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Ошибка удаления";
+      toast.error(message);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
+    <>
     <Link
       href={editing ? "#" : `/projects/${project.project_id}`}
       onClick={(e) => {
@@ -193,6 +235,18 @@ export function ProjectCard({ project, isAdmin }: Props) {
               >
                 <Pencil className="size-3.5" aria-hidden />
               </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setDeleteOpen(true);
+                }}
+                aria-label="Удалить проект"
+                className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+              >
+                <Trash2 className="size-3.5" aria-hidden />
+              </button>
             </div>
           )}
 
@@ -218,5 +272,43 @@ export function ProjectCard({ project, isAdmin }: Props) {
         </div>
       )}
     </Link>
+
+      <Dialog
+        open={deleteOpen}
+        onOpenChange={(v) => !deleting && setDeleteOpen(v)}
+      >
+        <DialogContent
+          onClick={(e) => e.stopPropagation()}
+          className="sm:max-w-md"
+        >
+          <DialogHeader>
+            <DialogTitle>Удалить проект «{name}»?</DialogTitle>
+            <DialogDescription>
+              Будут безвозвратно удалены: все материалы, анализ ЦА, кампании и
+              сгенерированные тексты.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setDeleteOpen(false)}
+              disabled={deleting}
+            >
+              Отмена
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => void handleDelete()}
+              disabled={deleting}
+            >
+              {deleting && <Loader2 className="size-4 animate-spin" aria-hidden />}
+              Удалить
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
