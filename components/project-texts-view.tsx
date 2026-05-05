@@ -2,7 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronUp, Copy, Download, Loader2 } from "lucide-react";
+import {
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  Download,
+  Loader2,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +43,7 @@ import {
   type ProjectAnalysis,
 } from "@/lib/types/project-analysis";
 import type { GeneratedAdText } from "@/lib/types/generated-texts";
+import type { SelectedTechniques } from "@/lib/types/knowledge-base";
 import { createClientId } from "@/lib/utils";
 
 const STORAGE_KEY_ANALYSIS = "project_analysis";
@@ -52,6 +60,7 @@ type LoadedContext = {
   analysis: ProjectAnalysis;
   selectedIndices: number[];
   projectName?: string | null;
+  selectedTechniques: SelectedTechniques | null;
   settings: {
     trafficDestination: TrafficDestination;
     textFormat: TextFormat;
@@ -61,6 +70,52 @@ type LoadedContext = {
     model: ClaudeModel;
   };
 };
+
+type ComparableSettings = {
+  selected_techniques: SelectedTechniques | null;
+  traffic_destination: string;
+  text_format: string;
+  text_count: number;
+  model: string;
+};
+
+function pickSelectedTechniques(raw: unknown): SelectedTechniques | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  const triggers = Array.isArray(r.triggers)
+    ? r.triggers.filter((x): x is string => typeof x === "string")
+    : null;
+  const formulas = Array.isArray(r.formulas)
+    ? r.formulas.filter((x): x is string => typeof x === "string")
+    : null;
+  const structures = Array.isArray(r.structures)
+    ? r.structures.filter((x): x is string => typeof x === "string")
+    : null;
+  const reasoning = typeof r.reasoning === "string" ? r.reasoning : "";
+  if (!triggers || !formulas || !structures) return null;
+  return { triggers, formulas, structures, reasoning };
+}
+
+function stableStringify(value: unknown): string {
+  if (value === null || value === undefined) return String(value);
+  if (typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  const o = value as Record<string, unknown>;
+  const keys = Object.keys(o).sort();
+  return `{${keys
+    .map((k) => `${JSON.stringify(k)}:${stableStringify(o[k])}`)
+    .join(",")}}`;
+}
+
+function buildComparableSettings(ctx: LoadedContext): ComparableSettings {
+  return {
+    selected_techniques: ctx.selectedTechniques,
+    traffic_destination: String(ctx.settings.trafficDestination),
+    text_format: String(ctx.settings.textFormat),
+    text_count: Number(ctx.settings.textCount),
+    model: String(ctx.settings.model),
+  };
+}
 
 function stripId(t: StoredText): GeneratedAdText {
   const { id: _id, ...rest } = t;
@@ -92,6 +147,7 @@ async function loadContext(projectId: string): Promise<LoadedContext> {
   let analysis: ProjectAnalysis | null = null;
   let selectedIndices: number[] = [];
   let projectName: string | null = null;
+  let selectedTechniques: SelectedTechniques | null = null;
 
   try {
     const project = await getProject(projectId);
@@ -107,6 +163,10 @@ async function loadContext(projectId: string): Promise<LoadedContext> {
         (i): i is number => typeof i === "number"
       );
     }
+
+    const rawTechniques = (project as { selected_techniques?: unknown } | null)
+      ?.selected_techniques;
+    selectedTechniques = pickSelectedTechniques(rawTechniques);
   } catch (e) {
     console.error("[texts] getProject failed", e);
   }
@@ -215,6 +275,7 @@ async function loadContext(projectId: string): Promise<LoadedContext> {
     analysis,
     selectedIndices,
     projectName,
+    selectedTechniques,
     settings: {
       trafficDestination,
       textFormat,
@@ -242,6 +303,25 @@ export function ProjectTextsView({ projectId }: ProjectTextsViewProps) {
   const [feedback, setFeedback] = useState("");
   const [projectName, setProjectName] = useState<string | null>(null);
   const contextRef = useRef<LoadedContext | null>(null);
+  const regenButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  const [currentSettings, setCurrentSettings] =
+    useState<ComparableSettings | null>(null);
+  const [lastSnapshot, setLastSnapshot] = useState<ComparableSettings | null>(
+    null
+  );
+  const [settingsChanged, setSettingsChanged] = useState(false);
+
+  useEffect(() => {
+    // Мягкий UX: если snapshot == null — плашку не показываем.
+    if (!lastSnapshot || !currentSettings) {
+      setSettingsChanged(false);
+      return;
+    }
+    setSettingsChanged(
+      stableStringify(lastSnapshot) !== stableStringify(currentSettings)
+    );
+  }, [lastSnapshot, currentSettings]);
 
   const runGeneration = useCallback(
     async (opts: {
@@ -256,6 +336,7 @@ export function ProjectTextsView({ projectId }: ProjectTextsViewProps) {
         const ctx = contextRef.current ?? (await loadContext(projectId));
         contextRef.current = ctx;
         setProjectName(ctx.projectName ?? null);
+        setCurrentSettings(buildComparableSettings(ctx));
 
         const { analysis, selectedIndices, settings } = ctx;
 
@@ -344,14 +425,17 @@ export function ProjectTextsView({ projectId }: ProjectTextsViewProps) {
         // Сохраняем батч в Supabase. finalTexts посчитан синхронно — никаких гонок.
         try {
           const payload = finalTexts.map(stripId) as unknown[];
+          const settingsSnapshot = buildComparableSettings(ctx);
           await saveGeneratedTexts(
             projectId,
             payload,
             tokensUsed,
             timeMs,
             settings.model,
+            settingsSnapshot,
             feedbackText
           );
+          setLastSnapshot(settingsSnapshot);
         } catch (e) {
           console.error("[texts] saveGeneratedTexts failed", e);
           toast.error("Не удалось сохранить тексты в облако");
@@ -379,6 +463,7 @@ export function ProjectTextsView({ projectId }: ProjectTextsViewProps) {
         if (cancelled) return;
         contextRef.current = ctx;
         setProjectName(ctx.projectName ?? null);
+        setCurrentSettings(buildComparableSettings(ctx));
       } catch (e) {
         if (cancelled) return;
         const msg = e instanceof Error ? e.message : "Неизвестная ошибка";
@@ -403,6 +488,14 @@ export function ProjectTextsView({ projectId }: ProjectTextsViewProps) {
             setHasExisting(true);
             existingFound = true;
           }
+
+          const snapshot = (existing as { settings_snapshot?: unknown })
+            .settings_snapshot;
+          setLastSnapshot(
+            snapshot && typeof snapshot === "object" && !Array.isArray(snapshot)
+              ? (snapshot as ComparableSettings)
+              : null
+          );
         }
       } catch (e) {
         console.error("[texts] getGeneratedTexts failed", e);
@@ -468,6 +561,15 @@ export function ProjectTextsView({ projectId }: ProjectTextsViewProps) {
   }
 
   const busy = loading || generating;
+
+  // TODO: remove after diagnostics.
+  console.log("[settings-banner]", {
+    hasExisting,
+    generating,
+    hasLastSnapshot: !!lastSnapshot,
+    settingsChanged,
+    shouldShow: hasExisting && !generating && !!lastSnapshot && settingsChanged,
+  });
 
   if (loading && texts.length === 0) {
     return (
@@ -565,6 +667,38 @@ export function ProjectTextsView({ projectId }: ProjectTextsViewProps) {
         </div>
       </div>
 
+      {hasExisting && !generating && lastSnapshot && settingsChanged && (
+        <div className="border-amber-300 bg-amber-50 text-amber-900 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-3 text-sm">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+            <div>
+              <div className="font-medium">
+                Настройки изменились после последней генерации
+              </div>
+              <div className="text-amber-900/90">
+                Тексты ниже сделаны со старыми настройками. Нажмите
+                «Перегенерировать» для новых текстов.
+              </div>
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
+            onClick={() => {
+              regenButtonRef.current?.scrollIntoView({
+                behavior: "smooth",
+                block: "center",
+              });
+              regenButtonRef.current?.focus();
+            }}
+          >
+            Перегенерировать →
+          </Button>
+        </div>
+      )}
+
       {hasExisting && !generating && (
         <div className="bg-muted/40 text-muted-foreground flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm">
           <span>
@@ -577,6 +711,7 @@ export function ProjectTextsView({ projectId }: ProjectTextsViewProps) {
             size="sm"
             disabled={busy}
             onClick={() => void runGeneration({ mode: "initial" })}
+            ref={regenButtonRef}
           >
             Перегенерировать
           </Button>
