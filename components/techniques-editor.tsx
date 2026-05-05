@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronUp, Info, Loader2, RotateCcw } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  Eraser,
+  Info,
+  Loader2,
+  RotateCcw,
+} from "lucide-react";
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 
 import { Button } from "@/components/ui/button";
@@ -456,6 +463,15 @@ export function TechniquesEditor({
     });
   };
 
+  const handleClearAll = () => {
+    onChange({
+      triggers: [],
+      formulas: [],
+      structures: [],
+      reasoning: value.reasoning,
+    });
+  };
+
   const reasoning = (initialSelected?.reasoning ?? "").trim();
   const reasoningTooLong = reasoning.length > REASONING_PREVIEW_CHARS;
   const reasoningPreview =
@@ -473,18 +489,30 @@ export function TechniquesEditor({
             текстов.
           </CardDescription>
         </div>
-        {initialSelected && (
+        <div className="flex flex-wrap items-center gap-2">
+          {initialSelected && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-2 shrink-0"
+              onClick={handleResetToAi}
+            >
+              <RotateCcw className="size-3.5" aria-hidden />
+              Вернуть выбор AI
+            </Button>
+          )}
           <Button
             type="button"
             variant="outline"
             size="sm"
             className="gap-2 shrink-0"
-            onClick={handleResetToAi}
+            onClick={handleClearAll}
           >
-            <RotateCcw className="size-3.5" aria-hidden />
-            Вернуть выбор AI
+            <Eraser className="size-3.5" aria-hidden />
+            Сбросить всё
           </Button>
-        )}
+        </div>
       </CardHeader>
       <CardContent className="space-y-5">
         {loading ? (
@@ -551,6 +579,16 @@ export function TechniquesEditor({
               selectedIds={value.structures}
               onToggle={handleToggle}
             />
+
+            {value.triggers.length === 0 &&
+              value.formulas.length === 0 &&
+              value.structures.length === 0 && (
+                <div className="border-border bg-muted/40 text-muted-foreground rounded-lg border px-3 py-2 text-sm">
+                  Свободный режим: копирайтер пишет без жёсткой структуры, по
+                  своему общему промпту. Используй, если нужны нестандартные
+                  тексты или хочешь посмотреть базовый стиль модели.
+                </div>
+              )}
           </>
         )}
       </CardContent>

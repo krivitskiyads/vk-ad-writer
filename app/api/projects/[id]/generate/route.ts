@@ -3,14 +3,17 @@ import type Anthropic from "@anthropic-ai/sdk";
 
 import { callClaude } from "@/lib/ai/claude-client";
 import {
-  COPYWRITER_SYSTEM_PROMPT,
+  buildCopywriterSystemPrompt,
   buildSingleTextUserPrompt,
+  type CopywriterKnowledge,
 } from "@/lib/prompts/copywriter";
+import { getKnowledgeByIds, getProject } from "@/lib/supabase/queries";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { writeUsageLog } from "@/lib/usage-log";
 import { toProjectAnalysis } from "@/lib/types/project-analysis";
 import type { AnalysisSegment } from "@/lib/types/project-analysis";
 import type { GeneratedAdText } from "@/lib/types/generated-texts";
+import type { SelectedTechniques } from "@/lib/types/knowledge-base";
 
 function isAnalysisSegment(value: unknown): value is AnalysisSegment {
   if (!value || typeof value !== "object") return false;
@@ -147,6 +150,50 @@ export async function POST(
     existing = existingTexts as GeneratedAdText[];
   }
 
+  // ── База знаний: подгружаем полные карточки техник, выбранных аналитиком ──
+  // Если selected_techniques нет (старые проекты) — копирайтер работает по
+  // старой логике без блока техник (graceful fallback, см. buildCopywriterSystemPrompt).
+  let knowledgeForCopywriter: CopywriterKnowledge = {
+    triggers: [],
+    formulas: [],
+    structures: [],
+  };
+  try {
+    const project = await getProject(projectId);
+    const selected =
+      ((project as { selected_techniques?: unknown } | null)
+        ?.selected_techniques as SelectedTechniques | null) ?? null;
+
+    if (selected) {
+      const allIds = [
+        ...(Array.isArray(selected.triggers) ? selected.triggers : []),
+        ...(Array.isArray(selected.formulas) ? selected.formulas : []),
+        ...(Array.isArray(selected.structures) ? selected.structures : []),
+      ];
+      if (allIds.length > 0) {
+        const entries = await getKnowledgeByIds(allIds);
+        knowledgeForCopywriter = {
+          triggers: entries.filter((e) => e.entry_type === "trigger"),
+          formulas: entries.filter((e) => e.entry_type === "formula"),
+          structures: entries.filter((e) => e.entry_type === "structure"),
+        };
+      }
+    }
+  } catch (kbErr) {
+    console.error(
+      "[generate] knowledge load failed (non-fatal, fallback to empty)",
+      kbErr
+    );
+  }
+
+  const systemPrompt = buildCopywriterSystemPrompt(knowledgeForCopywriter);
+  console.log("[generate] system prompt:", {
+    length: systemPrompt.length,
+    triggers: knowledgeForCopywriter.triggers.length,
+    formulas: knowledgeForCopywriter.formulas.length,
+    structures: knowledgeForCopywriter.structures.length,
+  });
+
   try {
     // ── Auth + parent_log_id (последний analyze для этого проекта) ──
     let userId: string | null = null;
@@ -206,7 +253,7 @@ export async function POST(
       });
 
       return callClaude({
-        systemPrompt: COPYWRITER_SYSTEM_PROMPT,
+        systemPrompt,
         userPrompt,
         temperature: 0.65,
         tool: SINGLE_TEXT_TOOL,

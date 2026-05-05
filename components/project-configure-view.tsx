@@ -35,14 +35,41 @@ import {
   type TextFormat,
   type TrafficDestination,
 } from "@/lib/generation-settings";
+import { TechniquesEditor } from "@/components/techniques-editor";
 import {
   getGenerationSettings,
   getProject,
   saveGenerationSettings,
+  updateProject,
 } from "@/lib/supabase/queries";
 import { toProjectAnalysis } from "@/lib/types/project-analysis";
 import type { ProjectAnalysis } from "@/lib/types/project-analysis";
+import type { SelectedTechniques } from "@/lib/types/knowledge-base";
 import { cn } from "@/lib/utils";
+
+const EMPTY_TECHNIQUES: SelectedTechniques = {
+  triggers: [],
+  formulas: [],
+  structures: [],
+  reasoning: "",
+};
+
+function pickSelectedTechniques(raw: unknown): SelectedTechniques | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  const triggers = Array.isArray(r.triggers)
+    ? r.triggers.filter((x): x is string => typeof x === "string")
+    : null;
+  const formulas = Array.isArray(r.formulas)
+    ? r.formulas.filter((x): x is string => typeof x === "string")
+    : null;
+  const structures = Array.isArray(r.structures)
+    ? r.structures.filter((x): x is string => typeof x === "string")
+    : null;
+  const reasoning = typeof r.reasoning === "string" ? r.reasoning : "";
+  if (!triggers || !formulas || !structures) return null;
+  return { triggers, formulas, structures, reasoning };
+}
 
 const STORAGE_KEY_ANALYSIS = "project_analysis";
 const STORAGE_KEY_SELECTED_SEGMENTS = "selected_segments";
@@ -75,6 +102,13 @@ export function ProjectConfigureView({ projectId }: ProjectConfigureViewProps) {
   const [count, setCount] = useState<string>("5");
   const [wishes, setWishes] = useState("");
 
+  // ── Техники: текущий выбор юзера + начальный выбор AI (для reset) ──
+  const [techniques, setTechniques] =
+    useState<SelectedTechniques>(EMPTY_TECHNIQUES);
+  const [aiTechniques, setAiTechniques] = useState<SelectedTechniques | null>(
+    null
+  );
+
   // ── Загрузка: проект + настройки из Supabase, с fallback на localStorage ──
   useEffect(() => {
     let cancelled = false;
@@ -96,6 +130,14 @@ export function ProjectConfigureView({ projectId }: ProjectConfigureViewProps) {
             (i): i is number => typeof i === "number"
           );
           setSelectedIndices(sel);
+        }
+
+        const rawTechniques = (project as { selected_techniques?: unknown } | null)
+          ?.selected_techniques;
+        const t = pickSelectedTechniques(rawTechniques);
+        if (t) {
+          setAiTechniques(t);
+          setTechniques(t);
         }
       } catch (e) {
         console.error("[configure] getProject failed", e);
@@ -223,6 +265,11 @@ export function ProjectConfigureView({ projectId }: ProjectConfigureViewProps) {
       return;
     }
 
+    // ── Техники: опционально. Если ничего не выбрано — свободный режим. ──
+    if (techniques.triggers.length > 0 && techniques.triggers.length < 2) {
+      toast.warning("Рекомендуется выбрать 2-4 триггера для сильных текстов");
+    }
+
     // Локальный снапшот (fallback)
     try {
       const settings: GenerationSettings = {
@@ -252,6 +299,14 @@ export function ProjectConfigureView({ projectId }: ProjectConfigureViewProps) {
     } catch (e) {
       console.error("[configure] saveGenerationSettings failed", e);
       toast.error("Не удалось сохранить настройки в облако");
+    }
+
+    // Сохраняем выбор техник в БД, чтобы generate/route.ts его подхватил
+    try {
+      await updateProject(projectId, { selected_techniques: techniques });
+    } catch (e) {
+      console.error("[configure] save selected_techniques failed", e);
+      toast.error("Не удалось сохранить выбор техник в облако");
     }
 
     router.push(`/project/${projectId}/texts`);
@@ -436,6 +491,12 @@ export function ProjectConfigureView({ projectId }: ProjectConfigureViewProps) {
           />
         </CardContent>
       </Card>
+
+      <TechniquesEditor
+        initialSelected={aiTechniques}
+        value={techniques}
+        onChange={setTechniques}
+      />
 
       <div className="flex flex-wrap justify-end gap-3">
         <Button

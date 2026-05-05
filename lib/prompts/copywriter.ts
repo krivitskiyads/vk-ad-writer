@@ -84,19 +84,21 @@ function formatGroup<T>(items: T[], formatter: (x: T) => string): string {
 }
 
 export function buildCopywriterSystemPrompt(
-  knowledge: CopywriterKnowledge
+  knowledge: CopywriterKnowledge | null | undefined
 ): string {
-  const formulasBlock = formatGroup(knowledge.formulas, formatFormula);
-  const triggersBlock = formatGroup(knowledge.triggers, formatTrigger);
-  const structuresBlock = formatGroup(knowledge.structures, formatStructure);
+  const formulas = knowledge?.formulas ?? [];
+  const triggers = knowledge?.triggers ?? [];
+  const structures = knowledge?.structures ?? [];
 
-  const hasAnyKnowledge =
-    knowledge.formulas.length +
-      knowledge.triggers.length +
-      knowledge.structures.length >
-    0;
+  const hasTechniques = Boolean(
+    knowledge && (triggers.length || formulas.length || structures.length)
+  );
 
-  const techniquesSection = hasAnyKnowledge
+  const formulasBlock = formatGroup(formulas, formatFormula);
+  const triggersBlock = formatGroup(triggers, formatTrigger);
+  const structuresBlock = formatGroup(structures, formatStructure);
+
+  const techniquesSection = hasTechniques
     ? `
 ═══════════════════════════════════════════════════
 ТЕХНИКИ ДЛЯ ЭТОГО ПРОЕКТА
@@ -137,7 +139,9 @@ ${structuresBlock}
 Это правило важнее любых стилистических соображений. Перед возвратом текста проверь его на наличие символа — и перепиши, если нашёл.
 `;
 
-  return `Ты — AI-копирайтер, специализирующийся на рекламных текстах для таргетированной рекламы ВКонтакте. 11 лет опыта, 300+ кампаний.
+  const TECHNIQUES_PLACEHOLDER = "__TECHNIQUES_BLOCK__";
+
+  const basePrompt = `Ты — AI-копирайтер, специализирующийся на рекламных текстах для таргетированной рекламы ВКонтакте. 11 лет опыта, 300+ кампаний.
 
 ТВОЯ ЗАДАЧА
 
@@ -264,7 +268,7 @@ ${noEmDashSection}
 
 10. Если даны референсы текстов — проанализируй их стиль, структуру, тональность, длину и используй как ориентир. Не копируй их дословно, но пиши в похожем стиле.
 
-${techniquesSection}
+${TECHNIQUES_PLACEHOLDER}
 ОГРАНИЧЕНИЯ МОДЕРАЦИИ ВК
 
 Нельзя использовать:
@@ -277,6 +281,12 @@ ${techniquesSection}
 — Обещание конкретных сроков без оговорок
 
 Весь ответ — на русском языке.`;
+
+  if (!hasTechniques) {
+    return basePrompt.replace(`${TECHNIQUES_PLACEHOLDER}\n`, "");
+  }
+
+  return basePrompt.replace(TECHNIQUES_PLACEHOLDER, techniquesSection.trim());
 }
 
 export function buildCopywriterUserPrompt(input: {
