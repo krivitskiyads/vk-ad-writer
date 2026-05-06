@@ -73,6 +73,7 @@ const TONE_SELECT = [
 ];
 
 function initialToneMode(settings: GenerationSettings): string {
+  // @ts-expect-error — будет удалено в R7 (тон убрали из GenerationSettings)
   const t = (settings.tone ?? "").trim();
   if (!t) return "__default__";
   const preset = TONE_SELECT.find((o) => o.value === t);
@@ -97,6 +98,7 @@ export function CampaignConfigureView({
   const [textFormat, setTextFormat] = useState<TextFormat>(initialSettings.textFormat);
   const [toneMode, setToneMode] = useState<string>(() => initialToneMode(initialSettings));
   const [toneCustom, setToneCustom] = useState(() => {
+    // @ts-expect-error — будет удалено в R7 (тон убрали из GenerationSettings)
     const t = (initialSettings.tone ?? "").trim();
     const preset = TONE_SELECT.find((o) => o.value === t);
     return preset ? "" : t;

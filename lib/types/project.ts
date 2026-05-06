@@ -10,6 +10,7 @@ export type Project = {
   description: string | null;
   analysis: ProjectAnalysis | null;
   selected_techniques: SelectedTechniques | null;
+  selected_segment_ids: string[];
   analysis_status: ProjectAnalysisStatus;
   created_at: string;
   updated_at: string;

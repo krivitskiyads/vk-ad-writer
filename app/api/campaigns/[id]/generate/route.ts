@@ -154,10 +154,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
         : 3;
     const customWishes =
       typeof settings?.customWishes === "string" ? settings.customWishes : "";
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const toneRaw = (settings as any)?.tone;
     const tone =
-      typeof settings?.tone === "string" && settings.tone.trim()
-        ? settings.tone.trim()
-        : "";
+      typeof toneRaw === "string" && toneRaw.trim() ? toneRaw.trim() : "";
     const model =
       typeof settings?.model === "string" && settings.model.trim()
         ? settings.model.trim()
@@ -328,7 +328,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
           textFormat,
           textCount,
           customWishes,
-          tone: settings.tone,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          tone: (settings as any).tone,
           model,
         }
       : null;

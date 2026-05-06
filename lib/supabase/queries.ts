@@ -101,6 +101,7 @@ export async function updateProject(
       | "description"
       | "analysis"
       | "selected_techniques"
+      | "selected_segment_ids"
       | "analysis_status"
     >
   >
@@ -123,6 +124,20 @@ export async function deleteProject(projectId: string): Promise<void> {
     .delete()
     .eq("id", projectId);
   if (error) throw error;
+}
+
+// ============================================================================
+// Сегменты проекта
+// ============================================================================
+
+export async function updateProjectSegments(
+  projectId: string,
+  selectedSegmentIds: string[]
+): Promise<Project> {
+  const ids = Array.isArray(selectedSegmentIds)
+    ? selectedSegmentIds.filter((x): x is string => typeof x === "string")
+    : [];
+  return updateProject(projectId, { selected_segment_ids: ids });
 }
 
 // ============================================================================
@@ -462,6 +477,51 @@ export async function upsertCampaignSettings(
 }
 
 // ============================================================================
+// Настройки проекта (1:1)
+// ============================================================================
+
+export async function getProjectSettings(
+  projectId: string
+): Promise<GenerationSettings | null> {
+  const supabase = await sb();
+  const { data, error } = await supabase
+    .from("generation_settings")
+    .select("*")
+    .eq("project_id", projectId)
+    .maybeSingle();
+  if (error) throw error;
+  return dbRowToGenerationSettings((data as Record<string, unknown> | null) ?? null);
+}
+
+export async function upsertProjectSettings(
+  projectId: string,
+  settings: Partial<GenerationSettings>
+): Promise<GenerationSettings> {
+  const supabase = await sb();
+  const existing = await getProjectSettings(projectId);
+  const merged = mergeGenerationSettings(existing, settings);
+  const row = generationSettingsToDbRow(merged);
+  const { data, error } = await supabase
+    .from("generation_settings")
+    .upsert(
+      {
+        project_id: projectId,
+        ...row,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "project_id" }
+    )
+    .select("*")
+    .single();
+  if (error) throw error;
+  const parsed = dbRowToGenerationSettings(data as Record<string, unknown>);
+  if (!parsed) {
+    throw new Error("Не удалось прочитать сохранённые настройки");
+  }
+  return parsed;
+}
+
+// ============================================================================
 // Тексты кампании
 // ============================================================================
 
@@ -501,12 +561,114 @@ export async function saveCampaignTexts(
       time_ms: batch.time_ms,
       model: batch.model,
       settings_snapshot: batch.settings_snapshot ?? null,
+      run_context: null,
       feedback: batch.feedback ?? null,
     })
     .select("*")
     .single();
   if (error) throw error;
   return data as GeneratedTextBatch;
+}
+
+// ============================================================================
+// Тексты проекта (прогоны / батчи)
+// ============================================================================
+
+export async function listProjectTexts(
+  projectId: string
+): Promise<GeneratedTextBatch[]> {
+  const supabase = await sb();
+  const { data, error } = await supabase
+    .from("generated_texts")
+    .select("*")
+    .eq("project_id", projectId)
+    .order("batch_number", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as GeneratedTextBatch[];
+}
+
+export async function saveProjectBatch(
+  projectId: string,
+  data: {
+    texts: any[];
+    settings_snapshot: GenerationSettings;
+    run_context: string | null;
+    model: string;
+    batch_number: number;
+  }
+): Promise<GeneratedTextBatch> {
+  const supabase = await sb();
+  const { data: row, error } = await supabase
+    .from("generated_texts")
+    .insert({
+      project_id: projectId,
+      batch_number: data.batch_number,
+      texts: data.texts,
+      model: data.model,
+      settings_snapshot: data.settings_snapshot,
+      run_context: data.run_context,
+      tokens_used: null,
+      time_ms: null,
+      feedback: null,
+    })
+    .select("*")
+    .single();
+  if (error) throw error;
+  return row as GeneratedTextBatch;
+}
+
+export async function deleteProjectBatch(
+  projectId: string,
+  batchId: string
+): Promise<void> {
+  const supabase = await sb();
+  const { error } = await supabase
+    .from("generated_texts")
+    .delete()
+    .eq("id", batchId)
+    .eq("project_id", projectId);
+  if (error) throw error;
+}
+
+export async function getProjectBatchCount(projectId: string): Promise<number> {
+  const supabase = await sb();
+  const { count, error } = await supabase
+    .from("generated_texts")
+    .select("id", { count: "exact", head: true })
+    .eq("project_id", projectId);
+  if (error) throw error;
+  return count ?? 0;
+}
+
+export async function getProjectsBatchCounts(
+  userId: string
+): Promise<Record<string, number>> {
+  const supabase = await sb();
+  const { data: projects, error: pErr } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("user_id", userId);
+  if (pErr) throw pErr;
+
+  const ids = (projects ?? [])
+    .map((p) => (p as { id: string }).id)
+    .filter((x): x is string => typeof x === "string");
+
+  if (ids.length === 0) return {};
+
+  const { data, error } = await supabase
+    .from("generated_texts")
+    .select("project_id")
+    .in("project_id", ids);
+  if (error) throw error;
+
+  const counts: Record<string, number> = {};
+  for (const id of ids) counts[id] = 0;
+  for (const row of data ?? []) {
+    const pid = (row as { project_id: string }).project_id;
+    if (pid && pid in counts) counts[pid] += 1;
+  }
+  return counts;
 }
 
 // ============================================================================

@@ -1,3 +1,5 @@
+import type { GenerationSettings } from "@/lib/generation-settings";
+
 export type GeneratedAdText = {
   headline: string;
   body: string;
@@ -25,13 +27,14 @@ export function isGeneratedTextsResponse(
 
 export type GeneratedTextBatch = {
   id: string;
-  campaign_id: string;
+  project_id: string;
   batch_number: number;
   texts: GeneratedAdText[];
   tokens_used: number | null;
   time_ms: number | null;
   model: string | null;
-  settings_snapshot: unknown | null;
+  settings_snapshot: GenerationSettings | null;
+  run_context: string | null;
   feedback: string | null;
   created_at: string;
 };
