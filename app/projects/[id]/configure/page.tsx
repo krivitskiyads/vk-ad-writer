@@ -1,13 +1,40 @@
+import { notFound } from "next/navigation";
+
+import { ProjectConfigureTab } from "@/components/project-configure-tab";
+import { getProject, getProjectSettings } from "@/lib/supabase/queries";
+
 export default async function ProjectConfigurePage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { id: _id } = await params;
+  const { id } = await params;
+  const [project, settings] = await Promise.all([
+    getProject(id),
+    getProjectSettings(id),
+  ]);
+  if (!project) notFound();
+
   return (
-    <div className="rounded-lg border bg-card p-8 text-center text-muted-foreground">
-      <p>Вкладка «Настройка» — в разработке (этап R5)</p>
-    </div>
+    <ProjectConfigureTab
+      projectId={id}
+      project={project}
+      initialSettings={
+        settings
+          ? {
+              project_id: id,
+              model: settings.model ?? "claude-sonnet-4-6",
+              count: settings.textCount ?? 5,
+              length:
+                settings.textFormat === "short"
+                  ? "short"
+                  : settings.textFormat === "long"
+                    ? "long"
+                    : "medium",
+            }
+          : null
+      }
+    />
   );
 }
 
