@@ -52,10 +52,16 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   }
 
   const b = (body ?? {}) as Record<string, unknown>;
-  const fields: Partial<Pick<Project, "name" | "description">> = {};
+  const fields: Partial<Pick<Project, "name" | "description" | "selected_segment_ids">> =
+    {};
   if (typeof b.name === "string") fields.name = b.name.trim();
   if (typeof b.description === "string" || b.description === null) {
     fields.description = (b.description as string | null) ?? null;
+  }
+  if (Array.isArray(b.selected_segment_ids)) {
+    fields.selected_segment_ids = b.selected_segment_ids.filter(
+      (x): x is string => typeof x === "string"
+    );
   }
 
   if (Object.keys(fields).length === 0) {

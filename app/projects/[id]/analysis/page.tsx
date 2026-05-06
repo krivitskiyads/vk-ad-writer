@@ -1,13 +1,17 @@
+import { notFound } from "next/navigation";
+
+import { ProjectAnalysisTab } from "@/components/project-analysis-tab";
+import { getProject } from "@/lib/supabase/queries";
+
 export default async function ProjectAnalysisPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { id: _id } = await params;
-  return (
-    <div className="rounded-lg border bg-card p-8 text-center text-muted-foreground">
-      <p>Вкладка «Анализ» — в разработке (этап R5)</p>
-    </div>
-  );
+  const { id } = await params;
+  const project = await getProject(id);
+  if (!project) notFound();
+
+  return <ProjectAnalysisTab projectId={id} project={project} />;
 }
 
