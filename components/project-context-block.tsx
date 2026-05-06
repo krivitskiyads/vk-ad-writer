@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Check, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -22,7 +21,6 @@ type Props = {
 const SAVE_DEBOUNCE_MS = 600;
 
 export function ProjectContextBlock({ projectId, initialDescription }: Props) {
-  const router = useRouter();
   const [value, setValue] = useState(initialDescription ?? "");
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -46,7 +44,6 @@ export function ProjectContextBlock({ projectId, initialDescription }: Props) {
         throw new Error(data.error ?? "Не удалось сохранить");
       }
       setSavedAt(Date.now());
-      router.refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Ошибка сохранения");
     } finally {

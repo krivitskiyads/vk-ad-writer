@@ -28,6 +28,7 @@ import { cn } from "@/lib/utils";
 type ProjectCardProject = {
   project_id: string;
   name: string;
+  description?: string | null;
   request_count: number;
   total_cost_rub: number;
   last_activity_at: string | null;
@@ -85,6 +86,16 @@ export function ProjectCard({ project, isAdmin, batchesCount }: Props) {
       inputRef.current?.select();
     }
   }, [editing]);
+
+  useEffect(() => {
+    setName(project.name);
+  }, [project.project_id, project.name]);
+
+  useEffect(() => {
+    if (!editing) {
+      setDraft(name);
+    }
+  }, [name, editing, project.project_id]);
 
   const startEdit = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -177,7 +188,32 @@ export function ProjectCard({ project, isAdmin, batchesCount }: Props) {
         editing && "ring-2 ring-[#7c3aed]/40 cursor-default"
       )}
     >
-      <div className="flex items-start gap-3">
+      {!editing && (
+        <div className="absolute right-4 top-4 z-10 flex items-center gap-0.5">
+          <button
+            type="button"
+            onClick={startEdit}
+            aria-label="Переименовать"
+            className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <Pencil className="size-3.5" aria-hidden />
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setDeleteOpen(true);
+            }}
+            aria-label="Удалить проект"
+            className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+          >
+            <Trash2 className="size-3.5" aria-hidden />
+          </button>
+        </div>
+      )}
+
+      <div className="flex items-start gap-3 pr-14">
         <div className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#f5f3ff] text-[#7c3aed]">
           <Briefcase className="size-4" aria-hidden />
         </div>
@@ -194,7 +230,7 @@ export function ProjectCard({ project, isAdmin, batchesCount }: Props) {
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={onKeyDown}
                 disabled={saving}
-                className="h-8 text-base font-semibold"
+                className="h-8 min-w-0 flex-1 text-base font-semibold"
               />
               <button
                 type="button"
@@ -204,7 +240,7 @@ export function ProjectCard({ project, isAdmin, batchesCount }: Props) {
                 }}
                 disabled={saving}
                 aria-label="Сохранить"
-                className="flex size-8 items-center justify-center rounded-md text-[#7c3aed] hover:bg-[#7c3aed]/10 disabled:opacity-50"
+                className="flex size-8 shrink-0 items-center justify-center rounded-md text-[#7c3aed] hover:bg-[#7c3aed]/10 disabled:opacity-50"
               >
                 {saving ? (
                   <Loader2 className="size-4 animate-spin" aria-hidden />
@@ -217,39 +253,22 @@ export function ProjectCard({ project, isAdmin, batchesCount }: Props) {
                 onClick={cancelEdit}
                 disabled={saving}
                 aria-label="Отмена"
-                className="flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+                className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
               >
                 <X className="size-4" aria-hidden />
               </button>
             </div>
           ) : (
-            <div className="flex items-start gap-1.5">
-              <div className="min-w-0 flex-1">
-                <h3 className="font-semibold text-lg text-foreground truncate leading-snug">
-                  {project.name}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={startEdit}
-                aria-label="Переименовать"
-                className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-              >
-                <Pencil className="size-3.5" aria-hidden />
-              </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setDeleteOpen(true);
-                }}
-                aria-label="Удалить проект"
-                className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-              >
-                <Trash2 className="size-3.5" aria-hidden />
-              </button>
-            </div>
+            <>
+              <h3 className="truncate text-base font-semibold text-foreground">
+                {name || project.name || "Без названия"}
+              </h3>
+              {project.description?.trim() ? (
+                <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                  {project.description.trim()}
+                </p>
+              ) : null}
+            </>
           )}
 
           <p className="mt-1 text-xs text-muted-foreground">

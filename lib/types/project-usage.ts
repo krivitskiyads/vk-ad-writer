@@ -2,6 +2,7 @@ export type ProjectUsageSummary = {
   project_id: string;
   user_id: string;
   name: string;
+  description?: string | null;
   campaign_count: number;
   request_count: number;
   total_cost_usd: number;

@@ -38,13 +38,51 @@ export async function listProjects(
   userId: string
 ): Promise<ProjectUsageSummary[]> {
   const supabase = await sb();
-  const { data, error } = await supabase
-    .from("project_usage_summary")
-    .select("*")
-    .eq("user_id", userId)
-    .order("last_activity_at", { ascending: false, nullsFirst: false });
-  if (error) throw error;
-  return (data ?? []) as ProjectUsageSummary[];
+  const [{ data: projectRows, error: projectsError }, { data: usageRows, error: usageError }] =
+    await Promise.all([
+      supabase
+        .from("projects")
+        .select("id, user_id, name, description, updated_at")
+        .eq("user_id", userId)
+        .order("updated_at", { ascending: false }),
+      supabase.from("project_usage_summary").select("*").eq("user_id", userId),
+    ]);
+  if (projectsError) throw projectsError;
+  if (usageError) throw usageError;
+
+  const usageByProjectId = new Map(
+    (usageRows ?? []).map((row) => [(row as ProjectUsageSummary).project_id, row as ProjectUsageSummary])
+  );
+
+  const merged = (projectRows ?? []).map((row) => {
+    const r = row as {
+      id: string;
+      user_id: string;
+      name: string;
+      description: string | null;
+      updated_at: string;
+    };
+    const u = usageByProjectId.get(r.id);
+    return {
+      project_id: r.id,
+      user_id: r.user_id,
+      name: r.name,
+      description: r.description,
+      campaign_count: u?.campaign_count ?? 0,
+      request_count: u?.request_count ?? 0,
+      total_cost_usd: u?.total_cost_usd ?? 0,
+      total_cost_rub: u?.total_cost_rub ?? 0,
+      last_activity_at: u?.last_activity_at ?? r.updated_at,
+    } satisfies ProjectUsageSummary;
+  });
+
+  merged.sort((a, b) => {
+    const ta = a.last_activity_at ? new Date(a.last_activity_at).getTime() : 0;
+    const tb = b.last_activity_at ? new Date(b.last_activity_at).getTime() : 0;
+    return tb - ta;
+  });
+
+  return merged;
 }
 
 export async function createProject(
