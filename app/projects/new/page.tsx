@@ -24,7 +24,7 @@ export default async function NewProjectPage() {
           </Link>
           <h1 className="notion-page-title mt-2">Новый проект</h1>
           <p className="notion-page-subtitle">
-            Создайте проект под клиента, загрузите материалы и запустите анализ ЦА
+            Создайте проект под клиента. Материалы и анализ добавите на следующем шаге.
           </p>
         </div>
       </div>
