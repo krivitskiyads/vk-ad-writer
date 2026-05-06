@@ -6,6 +6,7 @@ import { ProjectCard } from "@/components/project-card";
 import { buttonVariants } from "@/components/ui/button";
 import {
   getCurrentUserRole,
+  getProjectsBatchCounts,
   listProjects,
 } from "@/lib/supabase/queries";
 import { createServerSupabase } from "@/lib/supabase/server";
@@ -18,8 +19,9 @@ export default async function ProjectsPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [projects, role] = await Promise.all([
+  const [projects, batchCounts, role] = await Promise.all([
     listProjects(user.id),
+    getProjectsBatchCounts(user.id),
     getCurrentUserRole(),
   ]);
   const isAdmin = role === "admin";
@@ -69,7 +71,12 @@ export default async function ProjectsPage() {
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {projects.map((p) => (
-            <ProjectCard key={p.project_id} project={p} isAdmin={isAdmin} />
+            <ProjectCard
+              key={p.project_id}
+              project={p}
+              isAdmin={isAdmin}
+              batchesCount={batchCounts[p.project_id] ?? 0}
+            />
           ))}
         </div>
       )}

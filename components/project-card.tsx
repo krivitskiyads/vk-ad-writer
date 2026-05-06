@@ -28,7 +28,6 @@ import { cn } from "@/lib/utils";
 type ProjectCardProject = {
   project_id: string;
   name: string;
-  campaign_count: number;
   request_count: number;
   total_cost_rub: number;
   last_activity_at: string | null;
@@ -37,6 +36,7 @@ type ProjectCardProject = {
 type Props = {
   project: ProjectCardProject;
   isAdmin: boolean;
+  batchesCount: number;
 };
 
 function formatRelativeRu(iso: string | null): string {
@@ -60,16 +60,16 @@ function formatRelativeRu(iso: string | null): string {
   });
 }
 
-function pluralCampaigns(n: number): string {
+function pluralRuns(n: number): string {
   const last = n % 100;
-  if (last >= 11 && last <= 14) return `${n} кампаний`;
+  if (last >= 11 && last <= 14) return `${n} прогонов`;
   const lastDigit = n % 10;
-  if (lastDigit === 1) return `${n} кампания`;
-  if (lastDigit >= 2 && lastDigit <= 4) return `${n} кампании`;
-  return `${n} кампаний`;
+  if (lastDigit === 1) return `${n} прогон`;
+  if (lastDigit >= 2 && lastDigit <= 4) return `${n} прогона`;
+  return `${n} прогонов`;
 }
 
-export function ProjectCard({ project, isAdmin }: Props) {
+export function ProjectCard({ project, isAdmin, batchesCount }: Props) {
   const router = useRouter();
   const [name, setName] = useState(project.name);
   const [editing, setEditing] = useState(false);
@@ -251,7 +251,7 @@ export function ProjectCard({ project, isAdmin }: Props) {
           )}
 
           <p className="mt-1 text-xs text-muted-foreground">
-            {pluralCampaigns(project.campaign_count)} ·{" "}
+            {batchesCount > 0 ? pluralRuns(batchesCount) : "Прогонов пока нет"} ·{" "}
             {project.last_activity_at
               ? `обновлён ${formatRelativeRu(project.last_activity_at)}`
               : "ещё не использовался"}
