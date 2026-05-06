@@ -24,11 +24,11 @@ type ApiSettings = {
   project_id: string;
   model: string;
   count: number;
-  length: "short" | "medium" | "long";
+  length: "short" | "medium" | "long" | "mixed";
 };
 
 type ModelId = "fast" | "optimal" | "max";
-type LengthId = "short" | "medium" | "long";
+type LengthId = "short" | "medium" | "long" | "mixed";
 
 const SAVE_DEBOUNCE_MS = 600;
 
@@ -283,7 +283,20 @@ export function ProjectConfigureTab({ projectId, project, initialSettings }: Pro
               >
                 Длинный
               </button>
+              <button
+                type="button"
+                className={buttonClass(length === "mixed")}
+                onClick={() => setLength("mixed")}
+              >
+                Микс
+              </button>
             </div>
+            {length === "mixed" && (
+              <p className="text-xs text-muted-foreground">
+                AI сам подбирает длину под каждый текст — где-то короче, где-то
+                развёрнуто, под боль и сегмент
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>

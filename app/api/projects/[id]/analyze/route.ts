@@ -202,17 +202,28 @@ function buildAnalystUserPrompt(
   files: ProjectFile[]
 ): string {
   const desc = (description ?? "").trim();
-  let userPrompt = desc ? `Описание проекта: ${desc}` : "Описание проекта: (не задано)";
   const filesWithContent = files.filter((f) => (f.content ?? "").trim().length > 0);
+
+  const parts: string[] = [];
+
+  if (desc) {
+    parts.push(
+      `### КОНТЕКСТ ОТ ЮЗЕРА\n${desc}\n\nЭто описание задачи от пользователя — учти его при анализе ЦА.`
+    );
+  }
+
   if (filesWithContent.length > 0) {
     const blocks = filesWithContent
       .map((f) => `--- Файл: ${f.name} ---\n${f.content}`)
       .join("\n\n");
-    userPrompt += `\n\nСодержимое загруженных файлов:\n\n${blocks}`;
+    parts.push(`### МАТЕРИАЛЫ КЛИЕНТА\n\n${blocks}`);
   }
-  userPrompt +=
-    "\n\nВАЖНО: Верни ответ СТРОГО в формате JSON-объекта с полями business, segments, positioning, warnings, selected_techniques. НЕ возвращай массив, НЕ возвращай список, НЕ возвращай текст. Только JSON-объект.";
-  return userPrompt;
+
+  parts.push(
+    "ВАЖНО: Верни ответ СТРОГО в формате JSON-объекта с полями business, segments, positioning, warnings, selected_techniques. НЕ возвращай массив, НЕ возвращай список, НЕ возвращай текст. Только JSON-объект."
+  );
+
+  return parts.join("\n\n");
 }
 
 export async function POST(
@@ -248,8 +259,6 @@ export async function POST(
       );
     }
 
-    await setProjectAnalysisStatus(projectId, "analyzing");
-
     let knowledgeMenu: Awaited<ReturnType<typeof getKnowledgeMenu>> = [];
     try {
       knowledgeMenu = await getKnowledgeMenu();
@@ -261,6 +270,15 @@ export async function POST(
     }
 
     const files = await listProjectFiles(projectId, "material");
+    const descLen = (project.description ?? "").trim().length;
+    if (files.length === 0 && descLen < 1) {
+      return NextResponse.json(
+        { error: "Нет материалов для анализа" },
+        { status: 400, headers: JSON_UTF8 }
+      );
+    }
+
+    await setProjectAnalysisStatus(projectId, "analyzing");
     const systemPrompt = buildAnalystSystemPrompt(knowledgeMenu);
     const userPrompt = buildAnalystUserPrompt(project.description, files);
 

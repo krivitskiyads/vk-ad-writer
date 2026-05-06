@@ -368,7 +368,7 @@ export function buildSingleTextUserPrompt(input: {
   analysis: ProjectAnalysis;
   segment: AnalysisSegment;
   trafficDestination: string;
-  textFormat: "short" | "long";
+  textFormat: "short" | "long" | "mixed";
   approach: string;
   customWishes?: string;
   referenceTexts?: string;
@@ -391,6 +391,17 @@ export function buildSingleTextUserPrompt(input: {
     totalTexts,
   } = input;
 
+  const lengthInstructions: Record<"short" | "medium" | "long" | "mixed", string> = {
+    short: "Длина: короткий текст — 1-3 коротких абзаца, концентрированно",
+    medium: "Длина: средний текст — 4-6 абзацев, развёрнуто но без воды",
+    long: "Длина: длинный текст — 7+ абзацев, детально с раскрытием боли и решения",
+    mixed:
+      "Длина: подбери оптимальную длину под конкретную боль и сегмент. Где-то достаточно 2 абзацев, где-то нужно 6-8. Решай сам — главное чтобы текст работал на конверсию.",
+  };
+
+  const lengthKey: "short" | "medium" | "long" | "mixed" =
+    textFormat === "short" ? "short" : textFormat === "long" ? "long" : "mixed";
+
   return [
     `Сгенерируй ОДИН рекламный текст (текст ${textIndex} из ${totalTexts}).`,
     "",
@@ -410,11 +421,7 @@ export function buildSingleTextUserPrompt(input: {
     "",
     "ПАРАМЕТРЫ:",
     `- Куда ведём трафик: ${trafficDestination}`,
-    `- Формат: ${
-      textFormat === "long"
-        ? "длинный (700-1200 символов)"
-        : "короткий (300-500 символов)"
-    }`,
+    `- ${lengthInstructions[lengthKey]}`,
     `- Обязательный подход: ${approach}`,
     "",
     "ЗАДАЧА:",

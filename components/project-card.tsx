@@ -224,9 +224,11 @@ export function ProjectCard({ project, isAdmin, batchesCount }: Props) {
             </div>
           ) : (
             <div className="flex items-start gap-1.5">
-              <h2 className="min-w-0 flex-1 truncate text-base font-semibold leading-snug">
-                {name}
-              </h2>
+              <div className="min-w-0 flex-1">
+                <h3 className="font-semibold text-lg text-foreground truncate leading-snug">
+                  {project.name}
+                </h3>
+              </div>
               <button
                 type="button"
                 onClick={startEdit}

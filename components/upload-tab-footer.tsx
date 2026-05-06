@@ -10,15 +10,20 @@ type Props = {
   projectId: string;
   analysisStatus: string;
   materialsCount: number;
+  description?: string | null;
 };
 
 export function UploadTabFooter({
   projectId,
   analysisStatus,
   materialsCount,
+  description,
 }: Props) {
   const router = useRouter();
   const [starting, setStarting] = useState(false);
+
+  const hasContext =
+    materialsCount > 0 || ((description?.trim().length ?? 0) >= 50);
 
   const startAnalysis = () => {
     setStarting(true);
@@ -39,10 +44,11 @@ export function UploadTabFooter({
   let hint: string | null = null;
 
   if (analysisStatus === "pending") {
-    if (materialsCount === 0) {
-      label = "Загрузите материалы";
+    if (!hasContext) {
+      label = "Добавьте контекст";
       disabled = true;
-      hint = "Загрузите хотя бы один материал, чтобы запустить анализ ЦА";
+      hint =
+        'Загрузите материал или опишите задачу в блоке "Дополнительная информация", чтобы запустить анализ ЦА';
     }
   } else if (analysisStatus === "analyzing") {
     label = "Анализ выполняется…";
@@ -54,9 +60,10 @@ export function UploadTabFooter({
     variant = "secondary";
   } else if (analysisStatus === "failed") {
     label = "Перезапустить анализ";
-    if (materialsCount === 0) {
+    if (!hasContext) {
       disabled = true;
-      hint = "Загрузите хотя бы один материал, чтобы запустить анализ ЦА";
+      hint =
+        'Загрузите материал или опишите задачу в блоке "Дополнительная информация", чтобы запустить анализ ЦА';
     } else {
       hint = "Анализ не прошёл — попробуйте снова";
     }

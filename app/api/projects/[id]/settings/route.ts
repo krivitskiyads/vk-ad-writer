@@ -11,9 +11,12 @@ const DEFAULTS = {
   length: "medium" as const,
 };
 
-function lengthFromTextFormat(textFormat: unknown): "short" | "medium" | "long" {
+function lengthFromTextFormat(
+  textFormat: unknown
+): "short" | "medium" | "long" | "mixed" {
   if (textFormat === "short") return "short";
   if (textFormat === "long") return "long";
+  if (textFormat === "mixed") return "mixed";
   return "medium";
 }
 

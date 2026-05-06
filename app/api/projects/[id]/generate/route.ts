@@ -228,7 +228,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       (_, i) => APPROACH_POOL[i % APPROACH_POOL.length]
     );
     const formats = Array.from({ length: textCount }, (_, i) => {
-      if (textFormat === "mixed") return i % 2 === 0 ? "short" : "long";
+      if (textFormat === "mixed") return "mixed";
       return textFormat;
     });
     const segmentAssignments = Array.from(
@@ -241,7 +241,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         analysis: analysisForPrompt,
         segment: segmentAssignments[i],
         trafficDestination,
-        textFormat: formats[i] as "short" | "long",
+        textFormat: formats[i] as "short" | "long" | "mixed",
         approach: approaches[i],
         customWishes: augmentedWishes || undefined,
         textIndex: i + 1,

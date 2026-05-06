@@ -39,6 +39,7 @@ export function ProjectUploadTab({
           projectId={projectId}
           analysisStatus={project.analysis_status}
           materialsCount={materials.length}
+          description={project.description}
         />
       </div>
     </div>

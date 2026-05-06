@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { Copy, Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { BatchCard } from "@/components/batch-card";
 import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -19,6 +21,7 @@ import type { Project } from "@/lib/types/project";
 import type { GeneratedTextBatch } from "@/lib/types/generated-texts";
 import type { GenerationSettings } from "@/lib/generation-settings";
 import { useRouter } from "next/navigation";
+import { cn } from "@/lib/utils";
 
 type Props = {
   projectId: string;
@@ -30,6 +33,7 @@ type Props = {
 function lengthLabel(tf: string | null | undefined): string {
   if (tf === "short") return "Короткий";
   if (tf === "long") return "Длинный";
+  if (tf === "mixed") return "Микс";
   return "Средний";
 }
 
@@ -252,6 +256,15 @@ export function ProjectTextsTab({ projectId, project, settings, batches }: Props
                 onRefresh={refresh}
               />
             ))}
+          </div>
+
+          <div className="flex justify-end pt-6 border-t mt-8">
+            <Link
+              href="/projects"
+              className={cn(buttonVariants({ variant: "outline", size: "default" }))}
+            >
+              Готово → К списку проектов
+            </Link>
           </div>
         </div>
       )}

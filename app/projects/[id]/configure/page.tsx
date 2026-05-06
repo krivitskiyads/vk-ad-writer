@@ -30,6 +30,8 @@ export default async function ProjectConfigurePage({
                   ? "short"
                   : settings.textFormat === "long"
                     ? "long"
+                    : settings.textFormat === "mixed"
+                      ? "mixed"
                     : "medium",
             }
           : null
