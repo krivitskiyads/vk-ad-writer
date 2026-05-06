@@ -264,16 +264,18 @@ function TechniquePill({
 
   const pillClasses = cn(
     "group inline-flex items-center gap-2 rounded-full border px-3 py-1 text-left text-xs font-medium transition-colors",
-    "cursor-pointer select-none outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
+    "cursor-pointer select-none outline-none focus-visible:ring-2 focus-visible:ring-ring/40 hover:ring-2 hover:ring-[#7c3aed]/30",
     selected
       ? "bg-[#7c3aed] text-white border-[#7c3aed]/40 hover:bg-[#6d28d9]"
       : "border-border bg-purple-100 text-purple-800 hover:bg-purple-200 dark:bg-purple-900/40 dark:text-purple-200 dark:hover:bg-purple-900/60"
   );
 
   const checkboxClasses = cn(
-    "shrink-0 pointer-events-none",
-    selected &&
-      "border-white/70 data-checked:border-white data-checked:bg-white data-checked:text-[#7c3aed]"
+    "shrink-0 pointer-events-none size-4 rounded-[4px]",
+    // unchecked: clearly visible on purple pill background
+    "border-[1.5px] border-foreground/40 bg-background",
+    // checked: primary background with white check
+    "data-checked:!border-[#7c3aed] data-checked:!bg-[#7c3aed] data-checked:!text-white"
   );
 
   const onKeyDown: React.KeyboardEventHandler<HTMLDivElement> = (e) => {
