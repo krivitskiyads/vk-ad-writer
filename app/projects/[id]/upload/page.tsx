@@ -1,13 +1,29 @@
+import { notFound } from "next/navigation";
+
+import { ProjectUploadTab } from "@/components/project-upload-tab";
+import { getProject, listProjectFiles } from "@/lib/supabase/queries";
+
 export default async function ProjectUploadPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { id: _id } = await params;
+  const { id } = await params;
+  const [project, materials, successfulTexts] = await Promise.all([
+    getProject(id),
+    listProjectFiles(id, "material"),
+    listProjectFiles(id, "successful_text"),
+  ]);
+
+  if (!project) notFound();
+
   return (
-    <div className="rounded-lg border bg-card p-8 text-center text-muted-foreground">
-      <p>Вкладка «Загрузка» — в разработке (этап R4)</p>
-    </div>
+    <ProjectUploadTab
+      projectId={id}
+      project={project}
+      materials={materials}
+      successfulTexts={successfulTexts}
+    />
   );
 }
 
