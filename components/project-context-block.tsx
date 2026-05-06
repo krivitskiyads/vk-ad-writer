@@ -15,21 +15,17 @@ import { Textarea } from "@/components/ui/textarea";
 
 type Props = {
   projectId: string;
-  initialDescription: string | null;
+  value: string;
+  onChange: (v: string) => void;
 };
 
 const SAVE_DEBOUNCE_MS = 600;
 
-export function ProjectContextBlock({ projectId, initialDescription }: Props) {
-  const [value, setValue] = useState(initialDescription ?? "");
+export function ProjectContextBlock({ projectId, value, onChange }: Props) {
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialMount = useRef(true);
-
-  useEffect(() => {
-    setValue(initialDescription ?? "");
-  }, [initialDescription]);
 
   const persist = async (next: string) => {
     setSaving(true);
@@ -91,7 +87,7 @@ export function ProjectContextBlock({ projectId, initialDescription }: Props) {
       <CardContent>
         <Textarea
           value={value}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={(e) => onChange(e.target.value)}
           rows={6}
           placeholder="Например: нужны посты для рекламы сообщества для таргетологов. Аудитория — начинающие специалисты с опытом до 1 года. Тон — экспертный, но не снобский."
         />
@@ -99,4 +95,3 @@ export function ProjectContextBlock({ projectId, initialDescription }: Props) {
     </Card>
   );
 }
-

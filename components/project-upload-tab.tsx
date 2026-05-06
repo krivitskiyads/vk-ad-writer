@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 import { ProjectContextBlock } from "@/components/project-context-block";
 import { ProjectMaterialsSection } from "@/components/project-materials-section";
 import { ProjectSuccessfulTextsSection } from "@/components/project-successful-texts-section";
@@ -20,6 +22,12 @@ export function ProjectUploadTab({
   materials,
   successfulTexts,
 }: Props) {
+  const [description, setDescription] = useState(() => project.description ?? "");
+
+  useEffect(() => {
+    setDescription(project.description ?? "");
+  }, [projectId]);
+
   return (
     <div className="space-y-6">
       <ProjectMaterialsSection projectId={projectId} initialFiles={materials} />
@@ -31,7 +39,8 @@ export function ProjectUploadTab({
 
       <ProjectContextBlock
         projectId={projectId}
-        initialDescription={project.description}
+        value={description}
+        onChange={setDescription}
       />
 
       <div className="pt-2">
@@ -39,7 +48,7 @@ export function ProjectUploadTab({
           projectId={projectId}
           analysisStatus={project.analysis_status}
           materialsCount={materials.length}
-          description={project.description}
+          description={description}
         />
       </div>
     </div>
