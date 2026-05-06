@@ -86,7 +86,18 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   }
 
   if (Object.keys(fields).length === 0) {
-    return NextResponse.json({ error: "Нет полей для обновления" }, { status: 400 });
+    try {
+      const campaign = await getCampaign(id);
+      if (!campaign) {
+        return NextResponse.json({ error: "Кампания не найдена" }, { status: 404 });
+      }
+      return NextResponse.json({ campaign });
+    } catch (e) {
+      console.error("[PATCH /api/campaigns/:id] getCampaign failed", e);
+      const message =
+        e instanceof Error ? e.message : "Не удалось загрузить кампанию";
+      return NextResponse.json({ error: message }, { status: 500 });
+    }
   }
 
   try {

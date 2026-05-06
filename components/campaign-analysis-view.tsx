@@ -206,13 +206,14 @@ export function CampaignAnalysisView({ projectId, campaign }: Props) {
                   className="mt-1"
                 />
                 <div className="min-w-0 flex-1 space-y-1">
-                  <label htmlFor={`use-${id}`} className="cursor-pointer font-medium">
+                  <label
+                    htmlFor={`use-${id}`}
+                    className="cursor-pointer font-medium"
+                  >
                     {seg.name}
                   </label>
                   <p className="text-xs text-muted-foreground">
-                    <span className="font-medium text-foreground">
-                      Использовать в этой кампании
-                    </span>
+                    <span className="font-medium text-foreground">В этой кампании</span>
                     {seg.description ? ` — ${seg.description}` : ""}
                   </p>
                 </div>

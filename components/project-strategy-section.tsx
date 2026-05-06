@@ -29,6 +29,12 @@ export function ProjectStrategySection({ projectId, initialSelected }: Props) {
   const [saving, setSaving] = useState(false);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialMount = useRef(true);
+  const initialValueRef = useRef<string>(JSON.stringify(initialSelected ?? EMPTY));
+
+  useEffect(() => {
+    initialValueRef.current = JSON.stringify(initialSelected ?? EMPTY);
+    setValue(initialSelected ?? EMPTY);
+  }, [initialSelected]);
 
   useEffect(() => {
     if (initialMount.current) {
@@ -37,6 +43,8 @@ export function ProjectStrategySection({ projectId, initialSelected }: Props) {
     }
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(() => {
+      const currentJson = JSON.stringify(value);
+      if (currentJson === initialValueRef.current) return;
       void persist(value);
     }, SAVE_DEBOUNCE_MS);
     return () => {
@@ -57,6 +65,7 @@ export function ProjectStrategySection({ projectId, initialSelected }: Props) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error ?? "Не удалось сохранить");
       }
+      initialValueRef.current = JSON.stringify(next);
       setSavedAt(Date.now());
     } catch (e) {
       const message = e instanceof Error ? e.message : "Ошибка сохранения";

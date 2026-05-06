@@ -109,7 +109,13 @@ export function CampaignCreateForm({ projectId, analysis }: Props) {
       </div>
 
       <div className="space-y-3">
-        <Label>Под какие сегменты будем готовить тексты?</Label>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <Label>Под какие сегменты будем готовить тексты?</Label>
+          <span className="text-xs text-muted-foreground">
+            Можно выбрать один или несколько сегментов. От этого зависит, под кого AI
+            будет писать тексты.
+          </span>
+        </div>
         <ul className="space-y-2 rounded-lg border border-border bg-card p-3">
           {pairs.map(({ seg, id }) => {
             return (
@@ -135,6 +141,11 @@ export function CampaignCreateForm({ projectId, analysis }: Props) {
             );
           })}
         </ul>
+        {selected.size === 0 && (
+          <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
+            Выберите хотя бы один сегмент — без этого нечего передать в генерацию.
+          </div>
+        )}
         <p className="text-xs text-muted-foreground">
           Если выбраны несколько — тексты будут учитывать всех. Можно сузить под
           конкретный сегмент.

@@ -59,7 +59,18 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   }
 
   if (Object.keys(fields).length === 0) {
-    return NextResponse.json({ error: "Нет полей для обновления" }, { status: 400 });
+    try {
+      const project = await getProject(id);
+      if (!project) {
+        return NextResponse.json({ error: "Проект не найден" }, { status: 404 });
+      }
+      return NextResponse.json({ project });
+    } catch (e) {
+      console.error("[PATCH /api/projects/:id] getProject failed", e);
+      const message =
+        e instanceof Error ? e.message : "Не удалось загрузить проект";
+      return NextResponse.json({ error: message }, { status: 500 });
+    }
   }
 
   try {
