@@ -58,7 +58,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   const fields: Partial<
     Pick<
       Campaign,
-      "name" | "description" | "analysis_snapshot" | "techniques_snapshot" | "status"
+      | "name"
+      | "description"
+      | "analysis_snapshot"
+      | "techniques_snapshot"
+      | "selected_segment_ids"
+      | "status"
     >
   > = {};
   if (typeof b.name === "string") fields.name = b.name.trim();
@@ -70,6 +75,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   }
   if ("techniques_snapshot" in b) {
     fields.techniques_snapshot = b.techniques_snapshot as Campaign["techniques_snapshot"];
+  }
+  if (Array.isArray(b.selectedSegmentIds)) {
+    fields.selected_segment_ids = b.selectedSegmentIds.filter(
+      (x): x is string => typeof x === "string"
+    );
   }
   if (typeof b.status === "string" && VALID_STATUSES.includes(b.status as CampaignStatus)) {
     fields.status = b.status as CampaignStatus;

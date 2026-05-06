@@ -41,6 +41,8 @@ export type GenerationSettings = {
   textCount: number;
   customWishes: string;
   model?: ClaudeModel;
+  /** Тон речи (хранится вместе с custom_wishes через префикс в БД). */
+  tone?: string;
 };
 
 export const TRAFFIC_OPTIONS: Array<{

@@ -8,6 +8,7 @@ import { ProjectStrategySection } from "@/components/project-strategy-section";
 import { ProjectSuccessfulTextsSection } from "@/components/project-successful-texts-section";
 import {
   getCurrentUserRole,
+  getCampaignBatchCounts,
   getProject,
   getProjectsWithUsage,
   listCampaigns,
@@ -34,6 +35,10 @@ export default async function ProjectPage({ params }: PageProps) {
     listCampaigns(id),
     getCurrentUserRole(),
   ]);
+  const batchCounts =
+    campaigns.length > 0
+      ? await getCampaignBatchCounts(campaigns.map((c) => c.id))
+      : {};
   const isAdmin = role === "admin";
 
   let adminUsage: { total_cost_rub: number; request_count: number } | null = null;
@@ -83,6 +88,8 @@ export default async function ProjectPage({ params }: PageProps) {
       <ProjectCampaignsSection
         projectId={project.id}
         campaigns={campaigns}
+        analysisReady={project.analysis_status === "ready"}
+        batchCounts={batchCounts}
       />
     </div>
   );

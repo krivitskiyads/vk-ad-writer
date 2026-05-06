@@ -48,13 +48,20 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const name = typeof b.name === "string" ? b.name.trim() : "";
   const description =
     typeof b.description === "string" ? b.description.trim() : undefined;
+  const selectedSegmentIds = Array.isArray(b.selectedSegmentIds)
+    ? b.selectedSegmentIds.filter((x): x is string => typeof x === "string")
+    : undefined;
 
   if (!name) {
     return NextResponse.json({ error: "name обязателен" }, { status: 400 });
   }
 
   try {
-    const campaign = await createCampaign(id, { name, description });
+    const campaign = await createCampaign(id, {
+      name,
+      description,
+      selectedSegmentIds,
+    });
     return NextResponse.json({ campaign }, { status: 201 });
   } catch (e) {
     console.error("[POST /api/projects/:id/campaigns]", e);

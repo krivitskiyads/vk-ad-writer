@@ -10,6 +10,8 @@ export type Campaign = {
   description: string | null;
   analysis_snapshot: ProjectAnalysis | null;
   techniques_snapshot: SelectedTechniques | null;
+  /** Id сегментов из analysis_snapshot, участвующих в генерации. */
+  selected_segment_ids: string[];
   status: CampaignStatus;
   created_at: string;
   updated_at: string;

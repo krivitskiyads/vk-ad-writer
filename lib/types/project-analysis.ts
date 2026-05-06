@@ -22,6 +22,8 @@ export type ProjectAnalysis = {
 };
 
 export type AnalysisSegment = {
+  /** Стабильный id для выбора сегментов в кампаниях (генерируется при сохранении анализа). */
+  id?: string;
   name: string;
   description?: string;
   demographics?: {
@@ -128,5 +130,19 @@ export function toProjectAnalysis(data: unknown): ProjectAnalysis | null {
         ? (o.positioning as ProjectAnalysis["positioning"])
         : {},
     warnings: Array.isArray(o.warnings) ? (o.warnings as string[]) : [],
+  };
+}
+
+/** Добавляет стабильные id сегментам (для выбора в кампаниях и PATCH). */
+export function withStableSegmentIds(analysis: ProjectAnalysis): ProjectAnalysis {
+  return {
+    ...analysis,
+    segments: analysis.segments.map((s, i) => ({
+      ...s,
+      id:
+        typeof s.id === "string" && s.id.trim().length > 0
+          ? s.id.trim()
+          : `segment-${i}`,
+    })),
   };
 }

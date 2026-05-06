@@ -17,7 +17,8 @@ import {
   saveCampaignTexts,
 } from "@/lib/supabase/queries";
 import { createServerSupabase } from "@/lib/supabase/server";
-import type { AnalysisSegment } from "@/lib/types/project-analysis";
+import type { AnalysisSegment, ProjectAnalysis } from "@/lib/types/project-analysis";
+import { toProjectAnalysis, withStableSegmentIds } from "@/lib/types/project-analysis";
 import type { GeneratedAdText } from "@/lib/types/generated-texts";
 import { writeUsageLog } from "@/lib/usage-log";
 
@@ -73,13 +74,22 @@ const DEFAULT_MODEL = "claude-sonnet-4-6";
 
 type FileLike = { name: string; content: string | null };
 
-function buildFilesContext(files: FileLike[]): string {
+function buildMaterialsContext(files: FileLike[]): string {
   const withContent = files.filter((f) => (f.content ?? "").trim().length > 0);
   if (withContent.length === 0) return "";
   const blocks = withContent
     .map((f) => `--- Файл: ${f.name} ---\n${f.content}`)
     .join("\n\n");
-  return `Материалы клиента:\n\n${blocks}`;
+  return `Материалы для этой задачи:\n\n${blocks}`;
+}
+
+function buildSuccessfulTextsContext(files: FileLike[]): string {
+  const withContent = files.filter((f) => (f.content ?? "").trim().length > 0);
+  if (withContent.length === 0) return "";
+  const blocks = withContent
+    .map((f) => `--- Пример: ${f.name} ---\n${f.content}`)
+    .join("\n\n");
+  return `Удачные тексты и посты клиента (ориентир по стилю и подаче, не копируй дословно):\n\n${blocks}`;
 }
 
 export async function POST(request: NextRequest, context: RouteContext) {
@@ -144,17 +154,30 @@ export async function POST(request: NextRequest, context: RouteContext) {
         : 3;
     const customWishes =
       typeof settings?.customWishes === "string" ? settings.customWishes : "";
+    const tone =
+      typeof settings?.tone === "string" && settings.tone.trim()
+        ? settings.tone.trim()
+        : "";
     const model =
       typeof settings?.model === "string" && settings.model.trim()
         ? settings.model.trim()
         : DEFAULT_MODEL;
 
-    const [campaignFiles, projectFiles] = await Promise.all([
+    const [campaignFiles, projectMaterials, successfulTexts] = await Promise.all([
       listCampaignFiles(campaignId),
-      listProjectFiles(campaign.project_id),
+      listProjectFiles(campaign.project_id, "material"),
+      listProjectFiles(campaign.project_id, "successful_text"),
     ]);
-    const filesContext = buildFilesContext([...projectFiles, ...campaignFiles]);
-    const augmentedWishes = [filesContext, customWishes].filter(Boolean).join("\n\n");
+    const materialsContext = buildMaterialsContext([
+      ...projectMaterials,
+      ...campaignFiles,
+    ]);
+    const successfulContext = buildSuccessfulTextsContext(successfulTexts);
+    const toneBlock = tone ? `Тон речи: ${tone}` : "";
+    const wishesCore = [toneBlock, customWishes].filter(Boolean).join("\n\n");
+    const augmentedWishes = [materialsContext, successfulContext, wishesCore]
+      .filter(Boolean)
+      .join("\n\n");
 
     let knowledgeForCopywriter: CopywriterKnowledge = {
       triggers: [],
@@ -187,13 +210,27 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const systemPrompt = buildCopywriterSystemPrompt(knowledgeForCopywriter);
 
-    const segments = (campaign.analysis_snapshot.segments ?? []) as AnalysisSegment[];
+    const snapshotRaw = campaign.analysis_snapshot as ProjectAnalysis;
+    const snapshotNorm = withStableSegmentIds(
+      toProjectAnalysis(snapshotRaw) ?? snapshotRaw
+    );
+    const allSegments = (snapshotNorm.segments ?? []) as AnalysisSegment[];
+    const selectedIds = campaign.selected_segment_ids ?? [];
+    const segments =
+      selectedIds.length > 0
+        ? allSegments.filter((s) => s.id && selectedIds.includes(s.id))
+        : allSegments;
     if (segments.length === 0) {
       return NextResponse.json(
         { error: "В анализе кампании нет сегментов целевой аудитории" },
         { status: 400 }
       );
     }
+
+    const analysisForPrompt: ProjectAnalysis = {
+      ...snapshotNorm,
+      segments,
+    };
 
     const approaches = Array.from(
       { length: textCount },
@@ -210,7 +247,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const promises = Array.from({ length: textCount }, (_, i) => {
       const userPrompt = buildSingleTextUserPrompt({
-        analysis: campaign.analysis_snapshot!,
+        analysis: analysisForPrompt,
         segment: segmentAssignments[i],
         trafficDestination,
         textFormat: formats[i] as "short" | "long",
@@ -283,7 +320,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const existingBatches = await listCampaignTexts(campaignId);
     const nextBatchNumber =
-      (existingBatches[0]?.batch_number ?? 0) + 1;
+      existingBatches.reduce((m, b) => Math.max(m, b.batch_number ?? 0), 0) + 1;
 
     const settingsSnapshot = settings
       ? {
@@ -291,6 +328,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
           textFormat,
           textCount,
           customWishes,
+          tone: settings.tone,
           model,
         }
       : null;

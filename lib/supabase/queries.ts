@@ -6,7 +6,16 @@ import type {
   KnowledgeBaseSummary,
   SelectedTechniques,
 } from "@/lib/types/knowledge-base";
-import type { ProjectAnalysis } from "@/lib/types/project-analysis";
+import {
+  dbRowToGenerationSettings,
+  generationSettingsToDbRow,
+  mergeGenerationSettings,
+} from "@/lib/generation-settings-row";
+import {
+  type ProjectAnalysis,
+  toProjectAnalysis,
+  withStableSegmentIds,
+} from "@/lib/types/project-analysis";
 import type {
   Project,
   ProjectAnalysisStatus,
@@ -22,6 +31,17 @@ import type { GenerationSettings } from "@/lib/generation-settings";
 import type { ProjectUsageSummary } from "@/lib/types/project-usage";
 
 const sb = () => createServerSupabase();
+
+function normalizeCampaign(row: Campaign): Campaign {
+  const raw = row as Campaign & { selected_segment_ids?: string[] | null };
+  const ids = raw.selected_segment_ids;
+  return {
+    ...row,
+    selected_segment_ids: Array.isArray(ids)
+      ? ids.filter((x): x is string => typeof x === "string" && x.length > 0)
+      : [],
+  };
+}
 
 // ============================================================================
 // Проекты
@@ -202,12 +222,16 @@ export async function listCampaigns(
     .eq("project_id", projectId)
     .order("updated_at", { ascending: false });
   if (error) throw error;
-  return (data ?? []) as Campaign[];
+  return ((data ?? []) as Campaign[]).map(normalizeCampaign);
 }
 
 export async function createCampaign(
   projectId: string,
-  data: { name: string; description?: string }
+  data: {
+    name: string;
+    description?: string;
+    selectedSegmentIds?: string[];
+  }
 ): Promise<Campaign> {
   const project = await getProject(projectId);
   if (!project) {
@@ -217,6 +241,20 @@ export async function createCampaign(
     throw new Error("Сначала выполните анализ ЦА на уровне проекта");
   }
 
+  const parsed = toProjectAnalysis(project.analysis);
+  if (!parsed) {
+    throw new Error("В проекте нет готового анализа ЦА");
+  }
+  const analysisSnapshot = withStableSegmentIds(parsed);
+  const segmentIds = analysisSnapshot.segments.map((s) => s.id!);
+  const selected =
+    data.selectedSegmentIds !== undefined
+      ? data.selectedSegmentIds.filter((id) => segmentIds.includes(id))
+      : segmentIds;
+  if (selected.length === 0) {
+    throw new Error("Выберите хотя бы один сегмент целевой аудитории");
+  }
+
   const supabase = await sb();
   const { data: row, error } = await supabase
     .from("campaigns")
@@ -224,14 +262,15 @@ export async function createCampaign(
       project_id: projectId,
       name: data.name,
       description: data.description ?? null,
-      analysis_snapshot: project.analysis,
+      analysis_snapshot: analysisSnapshot,
       techniques_snapshot: project.selected_techniques,
+      selected_segment_ids: selected,
       status: "draft",
     })
     .select("*")
     .single();
   if (error) throw error;
-  return row as Campaign;
+  return normalizeCampaign(row as Campaign);
 }
 
 export async function getCampaign(
@@ -244,7 +283,7 @@ export async function getCampaign(
     .eq("id", campaignId)
     .maybeSingle();
   if (error) throw error;
-  return (data as Campaign | null) ?? null;
+  return data ? normalizeCampaign(data as Campaign) : null;
 }
 
 export async function updateCampaign(
@@ -256,6 +295,7 @@ export async function updateCampaign(
       | "description"
       | "analysis_snapshot"
       | "techniques_snapshot"
+      | "selected_segment_ids"
       | "status"
     >
   >
@@ -268,7 +308,7 @@ export async function updateCampaign(
     .select("*")
     .single();
   if (error) throw error;
-  return data as Campaign;
+  return normalizeCampaign(data as Campaign);
 }
 
 export async function deleteCampaign(campaignId: string): Promise<void> {
@@ -291,10 +331,36 @@ export async function refreshCampaignFromProject(
   if (!project) {
     throw new Error("Проект не найден");
   }
+  const nextAnalysis =
+    project.analysis != null
+      ? withStableSegmentIds(
+          toProjectAnalysis(project.analysis) ??
+            (project.analysis as ProjectAnalysis)
+        )
+      : null;
   return updateCampaign(campaignId, {
-    analysis_snapshot: project.analysis,
+    analysis_snapshot: nextAnalysis,
     techniques_snapshot: project.selected_techniques,
   });
+}
+
+export async function getCampaignBatchCounts(
+  campaignIds: string[]
+): Promise<Record<string, number>> {
+  if (campaignIds.length === 0) return {};
+  const supabase = await sb();
+  const { data, error } = await supabase
+    .from("generated_texts")
+    .select("campaign_id")
+    .in("campaign_id", campaignIds);
+  if (error) throw error;
+  const counts: Record<string, number> = {};
+  for (const id of campaignIds) counts[id] = 0;
+  for (const row of data ?? []) {
+    const cid = (row as { campaign_id: string }).campaign_id;
+    if (cid && cid in counts) counts[cid] += 1;
+  }
+  return counts;
 }
 
 // ============================================================================
@@ -362,7 +428,9 @@ export async function getCampaignSettings(
     .eq("campaign_id", campaignId)
     .maybeSingle();
   if (error) throw error;
-  return (data as GenerationSettings | null) ?? null;
+  return dbRowToGenerationSettings(
+    (data as Record<string, unknown> | null) ?? null
+  );
 }
 
 export async function upsertCampaignSettings(
@@ -370,12 +438,15 @@ export async function upsertCampaignSettings(
   settings: Partial<GenerationSettings>
 ): Promise<GenerationSettings> {
   const supabase = await sb();
+  const existing = await getCampaignSettings(campaignId);
+  const merged = mergeGenerationSettings(existing, settings);
+  const row = generationSettingsToDbRow(merged);
   const { data, error } = await supabase
     .from("generation_settings")
     .upsert(
       {
         campaign_id: campaignId,
-        ...settings,
+        ...row,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "campaign_id" }
@@ -383,7 +454,11 @@ export async function upsertCampaignSettings(
     .select("*")
     .single();
   if (error) throw error;
-  return data as GenerationSettings;
+  const parsed = dbRowToGenerationSettings(data as Record<string, unknown>);
+  if (!parsed) {
+    throw new Error("Не удалось прочитать сохранённые настройки");
+  }
+  return parsed;
 }
 
 // ============================================================================

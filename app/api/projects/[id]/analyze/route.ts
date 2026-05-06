@@ -12,7 +12,7 @@ import {
   setProjectAnalysisStatus,
 } from "@/lib/supabase/queries";
 import { createServerSupabase } from "@/lib/supabase/server";
-import type { ProjectAnalysis } from "@/lib/types/project-analysis";
+import { type ProjectAnalysis, withStableSegmentIds } from "@/lib/types/project-analysis";
 import type { ProjectFile } from "@/lib/types/project-files";
 import type { SelectedTechniques } from "@/lib/types/knowledge-base";
 import { writeUsageLog } from "@/lib/usage-log";
@@ -282,16 +282,18 @@ export async function POST(
     });
     const time_ms = Math.round(performance.now() - start);
 
-    const analysis = pickAnalysis(content);
+    const analysisRaw = pickAnalysis(content);
     const techniques = pickSelectedTechniques(content);
 
-    if (!analysis) {
+    if (!analysisRaw) {
       await setProjectAnalysisStatus(projectId, "failed");
       return NextResponse.json(
         { error: "Аналитик вернул некорректный ответ" },
         { status: 502, headers: JSON_UTF8 }
       );
     }
+
+    const analysis = withStableSegmentIds(analysisRaw);
 
     const safeTechniques: SelectedTechniques = techniques ?? {
       triggers: [],
