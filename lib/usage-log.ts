@@ -6,14 +6,12 @@ import { createServerSupabase } from "@/lib/supabase/server";
 
 export type UsageOperation =
   | "analyze_project"
-  | "analyze_campaign"
   | "generate"
   | "regenerate";
 
 export type WriteUsageLogParams = {
   userId: string;
   projectId: string | null;
-  campaignId: string | null;
   operation: UsageOperation;
   generatedTextId?: string | null;
   model: string;
@@ -30,7 +28,6 @@ export type WriteUsageLogParams = {
  *
  * Привязка:
  * - project_id: обычно всегда заполнен (расход всегда привязан к проекту-бизнесу)
- * - campaign_id: null когда расход на уровне проекта (анализ ЦА)
  *
  * Все ошибки глушим: трекинг не должен ронять основной запрос.
  * Возвращает null, если запись не удалось вставить.
@@ -68,7 +65,6 @@ export async function writeUsageLog(
       .insert({
         user_id: params.userId,
         project_id: params.projectId,
-        campaign_id: params.campaignId,
         operation: params.operation,
         model: params.model,
         input_tokens: params.inputTokens,

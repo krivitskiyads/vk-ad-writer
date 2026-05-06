@@ -8,13 +8,12 @@ import {
   type CopywriterKnowledge,
 } from "@/lib/prompts/copywriter";
 import {
-  getCampaign,
-  getCampaignSettings,
   getKnowledgeByIds,
-  listCampaignFiles,
-  listCampaignTexts,
+  getProject,
+  getProjectSettings,
   listProjectFiles,
-  saveCampaignTexts,
+  listProjectTexts,
+  saveProjectBatch,
 } from "@/lib/supabase/queries";
 import { createServerSupabase } from "@/lib/supabase/server";
 import type { AnalysisSegment, ProjectAnalysis } from "@/lib/types/project-analysis";
@@ -74,26 +73,23 @@ const DEFAULT_MODEL = "claude-sonnet-4-6";
 
 type FileLike = { name: string; content: string | null };
 
-function buildMaterialsContext(files: FileLike[]): string {
+function buildFilesBlock(title: string, files: FileLike[], nameLabel: string): string {
   const withContent = files.filter((f) => (f.content ?? "").trim().length > 0);
   if (withContent.length === 0) return "";
   const blocks = withContent
-    .map((f) => `--- Файл: ${f.name} ---\n${f.content}`)
+    .map((f) => `--- ${nameLabel}: ${f.name} ---\n${f.content}`)
     .join("\n\n");
-  return `Материалы для этой задачи:\n\n${blocks}`;
+  return `${title}:\n\n${blocks}`;
 }
 
-function buildSuccessfulTextsContext(files: FileLike[]): string {
-  const withContent = files.filter((f) => (f.content ?? "").trim().length > 0);
-  if (withContent.length === 0) return "";
-  const blocks = withContent
-    .map((f) => `--- Пример: ${f.name} ---\n${f.content}`)
-    .join("\n\n");
-  return `Удачные тексты и посты клиента (ориентир по стилю и подаче, не копируй дословно):\n\n${blocks}`;
+function normalizeAnalysis(raw: unknown): ProjectAnalysis | null {
+  const parsed = toProjectAnalysis(raw);
+  if (!parsed) return null;
+  return withStableSegmentIds(parsed);
 }
 
 export async function POST(request: NextRequest, context: RouteContext) {
-  const { id: campaignId } = await context.params;
+  const { id: projectId } = await context.params;
 
   if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json(
@@ -114,68 +110,83 @@ export async function POST(request: NextRequest, context: RouteContext) {
   try {
     body = await request.json();
   } catch {
-    // тело необязательно (можно генерить вообще без body)
+    // body optional
   }
   const b = (body ?? {}) as Record<string, unknown>;
-  const feedback = typeof b.feedback === "string" ? b.feedback : undefined;
-  const referenceTexts =
-    typeof b.referenceTexts === "string" ? b.referenceTexts : undefined;
-  const existingTexts = Array.isArray(b.existingTexts)
-    ? (b.existingTexts as GeneratedAdText[])
-    : undefined;
+  const runContext =
+    typeof b.run_context === "string" && b.run_context.trim()
+      ? b.run_context.trim()
+      : null;
 
   try {
-    const campaign = await getCampaign(campaignId);
-    if (!campaign) {
-      return NextResponse.json({ error: "Кампания не найдена" }, { status: 404 });
+    const project = await getProject(projectId);
+    if (!project) {
+      return NextResponse.json({ error: "Project not found" }, { status: 404 });
     }
-    if (!campaign.analysis_snapshot) {
-      return NextResponse.json(
-        {
-          error:
-            "У кампании нет снимка анализа. Обновите кампанию из проекта (refresh-from-project) или выполните анализ ЦА.",
-        },
-        { status: 400 }
-      );
+    if (project.analysis_status !== "ready" || !project.analysis) {
+      return NextResponse.json({ error: "Analysis not ready" }, { status: 400 });
     }
 
-    const settings = await getCampaignSettings(campaignId);
+    const analysisNorm = normalizeAnalysis(project.analysis);
+    if (!analysisNorm) {
+      return NextResponse.json({ error: "Analysis not ready" }, { status: 400 });
+    }
+
+    const allSegments = (analysisNorm.segments ?? []) as AnalysisSegment[];
+    const selectedIds = Array.isArray(project.selected_segment_ids)
+      ? project.selected_segment_ids
+      : [];
+    const segments =
+      selectedIds.length > 0
+        ? allSegments.filter((s) => s.id && selectedIds.includes(s.id))
+        : allSegments;
+
+    if (segments.length === 0) {
+      return NextResponse.json({ error: "No segments selected" }, { status: 400 });
+    }
+
+    const settings =
+      (await getProjectSettings(projectId)) ?? {
+        trafficDestination: "site",
+        textFormat: "mixed",
+        textCount: 5,
+        customWishes: "",
+        model: DEFAULT_MODEL,
+      };
+
     const trafficDestination =
-      typeof settings?.trafficDestination === "string" &&
-      settings.trafficDestination.trim()
+      typeof settings.trafficDestination === "string" && settings.trafficDestination.trim()
         ? settings.trafficDestination.trim()
         : "site";
-    const textFormatRaw = settings?.textFormat ?? "short";
-    const textFormat: "short" | "long" | "mixed" =
-      textFormatRaw === "long" || textFormatRaw === "mixed" ? textFormatRaw : "short";
     const textCount =
-      typeof settings?.textCount === "number" && settings.textCount > 0
-        ? Math.min(10, Math.floor(settings.textCount))
-        : 3;
-    const customWishes =
-      typeof settings?.customWishes === "string" ? settings.customWishes : "";
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const toneRaw = (settings as any)?.tone;
-    const tone =
-      typeof toneRaw === "string" && toneRaw.trim() ? toneRaw.trim() : "";
+      typeof settings.textCount === "number" && settings.textCount > 0
+        ? Math.min(10, Math.max(1, Math.floor(settings.textCount)))
+        : 5;
+    const textFormat: "short" | "long" | "mixed" =
+      settings.textFormat === "long" || settings.textFormat === "mixed"
+        ? settings.textFormat
+        : "short";
     const model =
-      typeof settings?.model === "string" && settings.model.trim()
+      typeof settings.model === "string" && settings.model.trim()
         ? settings.model.trim()
         : DEFAULT_MODEL;
 
-    const [campaignFiles, projectMaterials, successfulTexts] = await Promise.all([
-      listCampaignFiles(campaignId),
-      listProjectFiles(campaign.project_id, "material"),
-      listProjectFiles(campaign.project_id, "successful_text"),
+    const [materials, successfulTexts] = await Promise.all([
+      listProjectFiles(projectId, "material"),
+      listProjectFiles(projectId, "successful_text"),
     ]);
-    const materialsContext = buildMaterialsContext([
-      ...projectMaterials,
-      ...campaignFiles,
-    ]);
-    const successfulContext = buildSuccessfulTextsContext(successfulTexts);
-    const toneBlock = tone ? `Тон речи: ${tone}` : "";
-    const wishesCore = [toneBlock, customWishes].filter(Boolean).join("\n\n");
-    const augmentedWishes = [materialsContext, successfulContext, wishesCore]
+
+    const materialsContext = buildFilesBlock("Материалы клиента", materials, "Файл");
+    const successfulContext = buildFilesBlock(
+      "Удачные тексты и посты клиента (ориентир по стилю и подаче, не копируй дословно)",
+      successfulTexts,
+      "Пример"
+    );
+    const runContextBlock = runContext
+      ? `ДОПОЛНИТЕЛЬНЫЙ КОНТЕКСТ ДЛЯ ЭТОГО ПРОГОНА:\n${runContext}\nЭто уточнение к задаче от пользователя — учти его при написании текстов.`
+      : "";
+    const wishesCore = (settings.customWishes ?? "").trim();
+    const augmentedWishes = [materialsContext, successfulContext, runContextBlock, wishesCore]
       .filter(Boolean)
       .join("\n\n");
 
@@ -185,15 +196,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
       structures: [],
     };
     try {
-      const techniques = campaign.techniques_snapshot;
+      const techniques = project.selected_techniques;
       if (techniques) {
-        const allIds = [
+        const ids = [
           ...(Array.isArray(techniques.triggers) ? techniques.triggers : []),
           ...(Array.isArray(techniques.formulas) ? techniques.formulas : []),
           ...(Array.isArray(techniques.structures) ? techniques.structures : []),
         ];
-        if (allIds.length > 0) {
-          const entries = await getKnowledgeByIds(allIds);
+        if (ids.length > 0) {
+          const entries = await getKnowledgeByIds(ids);
           knowledgeForCopywriter = {
             triggers: entries.filter((e) => e.entry_type === "trigger"),
             formulas: entries.filter((e) => e.entry_type === "formula"),
@@ -202,33 +213,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
         }
       }
     } catch (kbErr) {
-      console.error(
-        "[generate] knowledge load failed (non-fatal, fallback to empty)",
-        kbErr
-      );
+      console.error("[project-generate] knowledge load failed (non-fatal)", kbErr);
     }
 
     const systemPrompt = buildCopywriterSystemPrompt(knowledgeForCopywriter);
 
-    const snapshotRaw = campaign.analysis_snapshot as ProjectAnalysis;
-    const snapshotNorm = withStableSegmentIds(
-      toProjectAnalysis(snapshotRaw) ?? snapshotRaw
-    );
-    const allSegments = (snapshotNorm.segments ?? []) as AnalysisSegment[];
-    const selectedIds = campaign.selected_segment_ids ?? [];
-    const segments =
-      selectedIds.length > 0
-        ? allSegments.filter((s) => s.id && selectedIds.includes(s.id))
-        : allSegments;
-    if (segments.length === 0) {
-      return NextResponse.json(
-        { error: "В анализе кампании нет сегментов целевой аудитории" },
-        { status: 400 }
-      );
-    }
-
     const analysisForPrompt: ProjectAnalysis = {
-      ...snapshotNorm,
+      ...analysisNorm,
       segments,
     };
 
@@ -253,9 +244,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
         textFormat: formats[i] as "short" | "long",
         approach: approaches[i],
         customWishes: augmentedWishes || undefined,
-        referenceTexts,
-        feedback,
-        existingTexts,
         textIndex: i + 1,
         totalTexts: textCount,
       });
@@ -272,13 +260,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
         if (text && typeof text === "object" && "body" in text) {
           text.text_format = (text.body?.length ?? 0) > 600 ? "long" : "short";
         }
-
         if (text) {
           try {
             await writeUsageLog({
               userId: user.id,
-              projectId: campaign.project_id,
-              operation: existingTexts ? "regenerate" : "generate",
+              projectId,
+              operation: "generate",
               model,
               inputTokens: usage.input_tokens,
               outputTokens: usage.output_tokens,
@@ -286,68 +273,52 @@ export async function POST(request: NextRequest, context: RouteContext) {
               cacheWriteTokens: usage.cache_creation_tokens,
             });
           } catch (logErr) {
-            console.error("[generate] usage log failed (non-fatal)", logErr);
+            console.error("[project-generate] usage log failed (non-fatal)", logErr);
           }
         }
-
         return { text, tokensUsed, timeMs };
       });
     });
 
     const results = await Promise.allSettled(promises);
-
     const texts: GeneratedAdText[] = [];
     let totalTokens = 0;
     let maxTime = 0;
 
-    for (const result of results) {
-      if (result.status === "fulfilled" && result.value.text) {
-        texts.push(result.value.text);
-        totalTokens += result.value.tokensUsed;
-        maxTime = Math.max(maxTime, result.value.timeMs);
-      } else if (result.status === "rejected") {
-        console.error("[generate] Parallel request failed:", result.reason);
+    for (const r of results) {
+      if (r.status === "fulfilled" && r.value.text) {
+        texts.push(r.value.text);
+        totalTokens += r.value.tokensUsed;
+        maxTime = Math.max(maxTime, r.value.timeMs);
+      } else if (r.status === "rejected") {
+        console.error("[project-generate] parallel request failed:", r.reason);
       }
     }
 
     if (texts.length === 0) {
-      return NextResponse.json(
-        { error: "Не удалось сгенерировать ни одного текста" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "All generations failed" }, { status: 500 });
     }
 
-    const existingBatches = await listCampaignTexts(campaignId);
-    const nextBatchNumber =
-      existingBatches.reduce((m, b) => Math.max(m, b.batch_number ?? 0), 0) + 1;
+    const existingBatches = await listProjectTexts(projectId);
+    const maxBatchNumber = existingBatches.reduce(
+      (m, b) => Math.max(m, b.batch_number ?? 0),
+      0
+    );
 
-    const settingsSnapshot = settings
-      ? {
-          trafficDestination,
-          textFormat,
-          textCount,
-          customWishes,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          tone: (settings as any).tone,
-          model,
-        }
-      : null;
-
-    const batch = await saveCampaignTexts(campaignId, {
-      batch_number: nextBatchNumber,
+    const saved = await saveProjectBatch(projectId, {
       texts,
-      tokens_used: totalTokens,
-      time_ms: maxTime,
+      settings_snapshot: settings,
+      run_context: runContext,
       model,
-      settings_snapshot: settingsSnapshot,
-      feedback: feedback ?? null,
+      batch_number: maxBatchNumber + 1,
     });
 
-    return NextResponse.json({ batch });
+    return NextResponse.json(saved);
   } catch (e) {
-    console.error("[generate]", e);
+    console.error("[POST /api/projects/:id/generate]", e);
     const message =
-      e instanceof Error ? e.message : "Ошибка при обращении к Claude API";
+      e instanceof Error ? e.message : "Ошибка при генерации";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+

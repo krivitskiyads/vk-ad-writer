@@ -312,7 +312,6 @@ export async function POST(
       await writeUsageLog({
         userId: user.id,
         projectId,
-        campaignId: null,
         operation: "analyze_project",
         model: ANALYZE_MODEL,
         inputTokens: usage.input_tokens,
