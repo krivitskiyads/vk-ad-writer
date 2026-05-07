@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 
@@ -25,12 +26,25 @@ export function UploadTabFooter({
   const hasContext =
     materialsCount > 0 || ((description?.trim().length ?? 0) >= 50);
 
-  const startAnalysis = () => {
+  const startAnalysis = async () => {
     setStarting(true);
-    fetch(`/api/projects/${projectId}/analyze`, { method: "POST" }).catch(
-      (err) => console.error("[upload-footer] analyze failed", err)
-    );
-    router.push(`/projects/${projectId}/analysis`);
+    try {
+      const response = await fetch(`/api/projects/${projectId}/analyze`, {
+        method: "POST",
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || `HTTP ${response.status}`);
+      }
+      window.location.href = `/projects/${projectId}/analysis`;
+    } catch (err) {
+      console.error("[upload-footer] analyze failed", err);
+      alert(
+        "Не удалось запустить анализ: " +
+          (err instanceof Error ? err.message : String(err))
+      );
+      setStarting(false);
+    }
   };
 
   const goToAnalysis = () => {
@@ -49,12 +63,16 @@ export function UploadTabFooter({
       disabled = true;
       hint =
         'Загрузите материал или опишите задачу в блоке "Дополнительная информация", чтобы запустить анализ ЦА';
+    } else if (starting) {
+      label = "Анализ идёт... (~1 минута)";
+      disabled = true;
+      showSpinner = true;
     }
   } else if (analysisStatus === "analyzing") {
     label = "Анализ выполняется…";
     disabled = true;
     showSpinner = true;
-    hint = "Это займёт около 30 секунд";
+    hint = "Это займёт около минуты";
   } else if (analysisStatus === "ready") {
     label = "Дальше → К анализу";
     variant = "secondary";
@@ -64,14 +82,22 @@ export function UploadTabFooter({
       disabled = true;
       hint =
         'Загрузите материал или опишите задачу в блоке "Дополнительная информация", чтобы запустить анализ ЦА';
+    } else if (starting) {
+      label = "Анализ идёт... (~1 минута)";
+      disabled = true;
+      showSpinner = true;
     } else {
       hint = "Анализ не прошёл — попробуйте снова";
     }
+  } else if (starting) {
+    label = "Анализ идёт... (~1 минута)";
+    disabled = true;
+    showSpinner = true;
   }
 
   const onClick = () => {
     if (analysisStatus === "ready") return goToAnalysis();
-    return startAnalysis();
+    void startAnalysis();
   };
 
   return (

@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { revalidatePath } from "next/cache";
 
 import type Anthropic from "@anthropic-ai/sdk";
 
@@ -342,6 +343,10 @@ export async function POST(
     }
 
     console.log("[analyze] done", { projectId, time_ms });
+
+    // Защита от кеширования RSC-payload на клиенте.
+    revalidatePath(`/projects/${projectId}/analysis`);
+    revalidatePath(`/projects/${projectId}`, "layout");
 
     return NextResponse.json(
       { project: updatedProject },
