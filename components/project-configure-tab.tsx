@@ -31,6 +31,7 @@ type ModelId = "fast" | "optimal" | "max";
 type LengthId = "short" | "medium" | "long" | "mixed";
 
 const SAVE_DEBOUNCE_MS = 600;
+const TECH_SAVE_DEBOUNCE_MS = 500;
 
 const MODEL_BY_ID: Record<ModelId, string> = {
   fast: "claude-haiku-4-5-20251001",
@@ -134,26 +135,23 @@ export function ProjectConfigureTab({ projectId, project, initialSettings }: Pro
   const [techSaving, setTechSaving] = useState(false);
   const [techSavedAt, setTechSavedAt] = useState<number | null>(null);
   const techTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const techMount = useRef(true);
 
   useEffect(() => {
     setTechniques(project.selected_techniques ?? null);
-  }, [project.id, project.selected_techniques]);
+  }, [project.id]);
 
   useEffect(() => {
-    if (techMount.current) {
-      techMount.current = false;
-      return;
-    }
-    if (techTimer.current) clearTimeout(techTimer.current);
-    techTimer.current = setTimeout(() => {
-      void persistTechniques(techniques);
-    }, SAVE_DEBOUNCE_MS);
     return () => {
       if (techTimer.current) clearTimeout(techTimer.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [techniques]);
+  }, []);
+
+  const schedulePersistTechniques = (next: SelectedTechniques | null) => {
+    if (techTimer.current) clearTimeout(techTimer.current);
+    techTimer.current = setTimeout(() => {
+      void persistTechniques(next);
+    }, TECH_SAVE_DEBOUNCE_MS);
+  };
 
   const persistTechniques = async (next: SelectedTechniques | null) => {
     setTechSaving(true);
@@ -180,6 +178,7 @@ export function ProjectConfigureTab({ projectId, project, initialSettings }: Pro
     const ai = project.analysis?.selected_techniques ?? null;
     if (!ai) return;
     setTechniques(ai);
+    schedulePersistTechniques(ai);
   };
 
   return (
@@ -345,7 +344,10 @@ export function ProjectConfigureTab({ projectId, project, initialSettings }: Pro
                 reasoning: "",
               }
             }
-            onChange={(next) => setTechniques(next)}
+            onChange={(next) => {
+              setTechniques(next);
+              schedulePersistTechniques(next);
+            }}
           />
         </CardContent>
       </Card>

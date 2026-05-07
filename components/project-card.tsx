@@ -61,13 +61,13 @@ function formatRelativeRu(iso: string | null): string {
   });
 }
 
-function pluralRuns(n: number): string {
+function pluralGenerations(n: number): string {
   const last = n % 100;
-  if (last >= 11 && last <= 14) return `${n} прогонов`;
+  if (last >= 11 && last <= 14) return `${n} генераций`;
   const lastDigit = n % 10;
-  if (lastDigit === 1) return `${n} прогон`;
-  if (lastDigit >= 2 && lastDigit <= 4) return `${n} прогона`;
-  return `${n} прогонов`;
+  if (lastDigit === 1) return `${n} генерация`;
+  if (lastDigit >= 2 && lastDigit <= 4) return `${n} генерации`;
+  return `${n} генераций`;
 }
 
 export function ProjectCard({ project, isAdmin, batchesCount }: Props) {
@@ -272,7 +272,10 @@ export function ProjectCard({ project, isAdmin, batchesCount }: Props) {
           )}
 
           <p className="mt-1 text-xs text-muted-foreground">
-            {batchesCount > 0 ? pluralRuns(batchesCount) : "Прогонов пока нет"} ·{" "}
+            {batchesCount > 0
+              ? pluralGenerations(batchesCount)
+              : "Генераций пока нет"}{" "}
+            ·{" "}
             {project.last_activity_at
               ? `обновлён ${formatRelativeRu(project.last_activity_at)}`
               : "ещё не использовался"}

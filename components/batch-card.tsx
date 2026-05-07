@@ -62,7 +62,7 @@ export function BatchCard({
 
   const title = useMemo(() => {
     const date = batch.created_at ? formatBatchDate(batch.created_at) : "дата неизвестна";
-    return `Прогон #${batch.batch_number} · ${date} · модель ${modelLabel} · ${texts.length} текстов`;
+    return `Генерация #${batch.batch_number} · ${date} · модель ${modelLabel} · ${texts.length} текстов`;
   }, [batch.batch_number, batch.created_at, modelLabel, texts.length]);
 
   const copyOne = async (t: GeneratedAdText) => {
@@ -82,9 +82,9 @@ export function BatchCard({
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? "Не удалось удалить прогон");
+        throw new Error(data.error ?? "Не удалось удалить генерацию");
       }
-      toast.success("Прогон удалён");
+      toast.success("Генерация удалена");
       setDeleteOpen(false);
       onRefresh();
     } catch (e) {
@@ -120,7 +120,7 @@ export function BatchCard({
             size="sm"
             className="gap-2 text-muted-foreground hover:text-destructive"
             onClick={() => setDeleteOpen(true)}
-            aria-label="Удалить прогон"
+            aria-label="Удалить генерацию"
           >
             <Trash2 className="size-4" aria-hidden />
             Удалить
@@ -131,7 +131,7 @@ export function BatchCard({
           <div className="border-t border-border px-4 py-4 space-y-3">
             {batch.run_context && (
               <div className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-                <span className="font-medium text-foreground">Контекст прогона:</span>{" "}
+                <span className="font-medium text-foreground">Контекст генерации:</span>{" "}
                 {batch.run_context}
               </div>
             )}
@@ -178,9 +178,9 @@ export function BatchCard({
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Удалить прогон?</DialogTitle>
+            <DialogTitle>Удалить генерацию?</DialogTitle>
             <DialogDescription>
-              Прогон #{batch.batch_number} будет удалён безвозвратно.
+              Генерация #{batch.batch_number} будет удалена безвозвратно.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-0">

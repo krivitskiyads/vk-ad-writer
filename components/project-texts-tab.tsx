@@ -182,13 +182,13 @@ export function ProjectTextsTab({ projectId, project, settings, batches }: Props
         <CardHeader>
           <CardTitle>Генерация текстов</CardTitle>
           <CardDescription>
-            Дополнительный контекст поможет уточнить задачу для этого прогона.
+            Дополнительный контекст поможет уточнить задачу для этой генерации.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <div className="text-sm font-medium">
-              Дополнительный контекст для этого прогона (опц.)
+              Дополнительный контекст для этой генерации (опц.)
             </div>
             <Textarea
               value={runContext}
@@ -223,7 +223,7 @@ export function ProjectTextsTab({ projectId, project, settings, batches }: Props
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-lg font-semibold">
-                История прогонов <span className="text-muted-foreground font-normal">({batches.length})</span>
+                История генераций <span className="text-muted-foreground font-normal">({batches.length})</span>
               </h2>
             </div>
             <div className="flex flex-wrap gap-2">
