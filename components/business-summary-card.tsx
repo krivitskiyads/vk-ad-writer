@@ -24,11 +24,10 @@ function listOrDash(v: unknown): string[] {
 export function BusinessSummaryCard({ business }: Props) {
   const usp = listOrDash(business.usp);
   return (
-    <Card className="rounded-lg border border-gray-200 p-5">
+    <Card className="rounded-lg border border-gray-200 p-4">
       <div className="text-lg font-semibold">О бизнесе</div>
-      <div className="text-sm text-gray-500 mt-1">Ниша, география и ключевые тезисы</div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 mt-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 mt-3">
         <Field label="Ниша" value={(business.niche ?? "").trim() || "—"} />
         <Field label="Категория" value={(business.niche_category ?? "").trim() || "—"} />
         <Field label="Гео" value={(business.geo ?? "").trim() || "—"} />
@@ -41,10 +40,10 @@ export function BusinessSummaryCard({ business }: Props) {
         </div>
       </div>
 
-      <div className="mt-5">
+      <div className="mt-3">
         <div className="text-sm font-semibold text-gray-900 mb-2">УТП</div>
         {usp.length > 0 ? (
-          <ul className="mt-2 list-disc list-inside text-sm text-gray-900">
+          <ul className="mt-2 list-disc list-inside text-sm text-gray-900 space-y-1">
             {usp.map((x) => (
               <li key={x}>{x}</li>
             ))}
@@ -54,7 +53,7 @@ export function BusinessSummaryCard({ business }: Props) {
         )}
       </div>
 
-      <p className="mt-5 text-sm text-gray-900">
+      <p className="mt-3 text-sm text-gray-900">
         {(business.description_summary ?? "").trim() || "—"}
       </p>
     </Card>

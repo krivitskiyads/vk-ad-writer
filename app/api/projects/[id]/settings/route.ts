@@ -44,6 +44,8 @@ export async function GET(_request: NextRequest, context: RouteContext) {
         model: DEFAULTS.model,
         count: DEFAULTS.count,
         length: DEFAULTS.length,
+        traffic_destination: "site",
+        trafficDestination: "site",
       });
     }
     return NextResponse.json({
@@ -51,6 +53,8 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       model: settings.model ?? DEFAULTS.model,
       count: settings.textCount ?? DEFAULTS.count,
       length: lengthFromTextFormat(settings.textFormat),
+      traffic_destination: settings.trafficDestination,
+      trafficDestination: settings.trafficDestination,
     });
   } catch (e) {
     console.error("[GET /api/projects/:id/settings]", e);
@@ -83,6 +87,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   if (b.model !== undefined) fields.model = b.model;
   if (b.count !== undefined) fields.textCount = b.count;
   if (b.length !== undefined) fields.textFormat = textFormatFromLength(b.length);
+  if (b.trafficDestination !== undefined) fields.trafficDestination = b.trafficDestination;
 
   if (Object.keys(fields).length === 0) {
     try {
@@ -94,8 +99,15 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
               model: current.model ?? DEFAULTS.model,
               count: current.textCount ?? DEFAULTS.count,
               length: lengthFromTextFormat(current.textFormat),
+              traffic_destination: current.trafficDestination,
+              trafficDestination: current.trafficDestination,
             }
-          : { project_id: id, ...DEFAULTS }
+          : {
+              project_id: id,
+              ...DEFAULTS,
+              traffic_destination: "site",
+              trafficDestination: "site",
+            }
       );
     } catch (e) {
       console.error("[PATCH /api/projects/:id/settings] getProjectSettings failed", e);
@@ -113,6 +125,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       model: updated.model ?? DEFAULTS.model,
       count: updated.textCount ?? DEFAULTS.count,
       length: lengthFromTextFormat(updated.textFormat),
+      traffic_destination: updated.trafficDestination,
+      trafficDestination: updated.trafficDestination,
     });
   } catch (e) {
     console.error("[PATCH /api/projects/:id/settings]", e);

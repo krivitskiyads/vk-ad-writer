@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
-import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 
@@ -28,23 +27,11 @@ export function UploadTabFooter({
 
   const startAnalysis = async () => {
     setStarting(true);
-    try {
-      const response = await fetch(`/api/projects/${projectId}/analyze`, {
-        method: "POST",
-      });
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || `HTTP ${response.status}`);
-      }
-      window.location.href = `/projects/${projectId}/analysis`;
-    } catch (err) {
-      console.error("[upload-footer] analyze failed", err);
-      alert(
-        "Не удалось запустить анализ: " +
-          (err instanceof Error ? err.message : String(err))
-      );
-      setStarting(false);
-    }
+    fetch(`/api/projects/${projectId}/analyze`, { method: "POST" }).catch((err) =>
+      console.error("[upload-footer] analyze failed", err)
+    );
+    await new Promise((r) => setTimeout(r, 300));
+    window.location.href = `/projects/${projectId}/analysis`;
   };
 
   const goToAnalysis = () => {

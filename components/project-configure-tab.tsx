@@ -25,10 +25,17 @@ type ApiSettings = {
   model: string;
   count: number;
   length: "short" | "medium" | "long" | "mixed";
+  trafficDestination?: string;
 };
 
 type ModelId = "fast" | "optimal" | "max";
 type LengthId = "short" | "medium" | "long" | "mixed";
+type TrafficDestinationId =
+  | "community"
+  | "website"
+  | "lead_magnet"
+  | "lead_form"
+  | "messages";
 
 const SAVE_DEBOUNCE_MS = 600;
 const TECH_SAVE_DEBOUNCE_MS = 500;
@@ -38,6 +45,24 @@ const MODEL_BY_ID: Record<ModelId, string> = {
   optimal: "claude-sonnet-4-6",
   max: "claude-opus-4-6",
 };
+
+const TRAFFIC_BY_ID: Record<TrafficDestinationId, string> = {
+  community: "community_subscribe",
+  website: "site",
+  lead_magnet: "quiz",
+  lead_form: "vk_lead",
+  messages: "community_messages",
+};
+
+function trafficIdFromString(v: string | null | undefined): TrafficDestinationId {
+  const x = (v ?? "").trim();
+  if (x === "community_subscribe") return "community";
+  if (x === "site") return "website";
+  if (x === "quiz") return "lead_magnet";
+  if (x === "vk_lead") return "lead_form";
+  if (x === "community_messages") return "messages";
+  return "website";
+}
 
 function modelIdFromString(model: string | null | undefined): ModelId {
   const m = (model ?? "").toLowerCase();
@@ -83,6 +108,9 @@ export function ProjectConfigureTab({ projectId, project, initialSettings }: Pro
   const [modelId, setModelId] = useState<ModelId>(() => modelIdFromString(init.model));
   const [count, setCount] = useState(() => clamp(init.count ?? 5, 1, 10));
   const [length, setLength] = useState<LengthId>(() => init.length ?? "medium");
+  const [trafficId, setTrafficId] = useState<TrafficDestinationId>(() =>
+    trafficIdFromString(init.trafficDestination)
+  );
 
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -126,6 +154,23 @@ export function ProjectConfigureTab({ projectId, project, initialSettings }: Pro
       toast.error(e instanceof Error ? e.message : "Ошибка сохранения");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const persistTraffic = async (nextId: TrafficDestinationId) => {
+    try {
+      const res = await fetch(`/api/projects/${projectId}/settings`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trafficDestination: TRAFFIC_BY_ID[nextId] }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "Не удалось сохранить");
+      }
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Ошибка сохранения");
     }
   };
 
@@ -183,6 +228,67 @@ export function ProjectConfigureTab({ projectId, project, initialSettings }: Pro
 
   return (
     <div className="space-y-6">
+      <Card className="border-border">
+        <CardHeader>
+          <CardTitle>Куда ведём трафик</CardTitle>
+          <CardDescription>От этого зависит стиль и финал текста</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className={buttonClass(trafficId === "community")}
+              onClick={() => {
+                setTrafficId("community");
+                void persistTraffic("community");
+              }}
+            >
+              Сообщество ВКонтакте
+            </button>
+            <button
+              type="button"
+              className={buttonClass(trafficId === "website")}
+              onClick={() => {
+                setTrafficId("website");
+                void persistTraffic("website");
+              }}
+            >
+              Сайт или лендинг
+            </button>
+            <button
+              type="button"
+              className={buttonClass(trafficId === "lead_magnet")}
+              onClick={() => {
+                setTrafficId("lead_magnet");
+                void persistTraffic("lead_magnet");
+              }}
+            >
+              Лид-магнит или квиз
+            </button>
+            <button
+              type="button"
+              className={buttonClass(trafficId === "lead_form")}
+              onClick={() => {
+                setTrafficId("lead_form");
+                void persistTraffic("lead_form");
+              }}
+            >
+              Лид-форма ВКонтакте
+            </button>
+            <button
+              type="button"
+              className={buttonClass(trafficId === "messages")}
+              onClick={() => {
+                setTrafficId("messages");
+                void persistTraffic("messages");
+              }}
+            >
+              Сообщения сообщества
+            </button>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card className="border-border">
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>

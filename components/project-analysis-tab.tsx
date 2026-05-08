@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Check, Loader2, RefreshCw, TriangleAlert } from "lucide-react";
@@ -36,7 +36,6 @@ type Props = {
   project: Project;
 };
 
-const SAVE_DEBOUNCE_MS = 500;
 const POLL_MS = 8000;
 const ANALYZING_MESSAGES = [
   "Изучаем материалы…",
@@ -76,33 +75,34 @@ export function ProjectAnalysisTab({ projectId, project }: Props) {
   }, [project.selected_segment_ids, allSegmentIds]);
 
   const [selectedIds, setSelectedIds] = useState<string[]>(defaultSelected);
-  const [saving, setSaving] = useState(false);
-  const [savedAt, setSavedAt] = useState<number | null>(null);
-  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const initialMount = useRef(true);
+  const [savedIds, setSavedIds] = useState<string[]>(defaultSelected);
+  const [saveStatus, setSaveStatus] = useState<"ok" | "dirty" | "saving" | "error">(
+    "ok"
+  );
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [openSegmentId, setOpenSegmentId] = useState<string | null>(null);
 
   useEffect(() => {
     setSelectedIds(defaultSelected);
+    setSavedIds(defaultSelected);
+    setSaveStatus("ok");
+    setSaveError(null);
   }, [defaultSelected]);
 
-  useEffect(() => {
-    if (initialMount.current) {
-      initialMount.current = false;
-      return;
-    }
-    if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    debounceTimer.current = setTimeout(() => {
-      void persist(selectedIds);
-    }, SAVE_DEBOUNCE_MS);
-    return () => {
-      if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedIds]);
+  const isDirty = useMemo(
+    () => JSON.stringify(savedIds) !== JSON.stringify(selectedIds),
+    [savedIds, selectedIds]
+  );
 
-  const persist = async (next: string[]) => {
-    setSaving(true);
+  useEffect(() => {
+    if (saveStatus === "saving") return;
+    if (saveStatus === "error") return;
+    setSaveStatus(isDirty ? "dirty" : "ok");
+  }, [isDirty, saveStatus]);
+
+  const persist = async (next: string[]): Promise<boolean> => {
+    setSaveStatus("saving");
+    setSaveError(null);
     try {
       const res = await fetch(`/api/projects/${projectId}`, {
         method: "PATCH",
@@ -113,12 +113,14 @@ export function ProjectAnalysisTab({ projectId, project }: Props) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error ?? "Не удалось сохранить");
       }
-      setSavedAt(Date.now());
-      router.refresh();
+      setSavedIds(next);
+      setSaveStatus("ok");
+      return true;
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Ошибка сохранения");
-    } finally {
-      setSaving(false);
+      const msg = e instanceof Error ? e.message : "Ошибка сохранения";
+      setSaveError(msg);
+      setSaveStatus("error");
+      return false;
     }
   };
 
@@ -153,6 +155,11 @@ export function ProjectAnalysisTab({ projectId, project }: Props) {
   const [rechecking, setRechecking] = useState(false);
   const restartAnalyze = async () => {
     setRechecking(true);
+    // новый анализ сбрасывает selected_segment_ids в [], синхронизируем UI сразу
+    setSelectedIds([]);
+    setSavedIds([]);
+    setSaveStatus("ok");
+    setSaveError(null);
     fetch(`/api/projects/${projectId}/analyze`, { method: "POST" }).catch((err) =>
       console.error("[project-analysis-tab] analyze failed", err)
     );
@@ -160,22 +167,14 @@ export function ProjectAnalysisTab({ projectId, project }: Props) {
     setTimeout(() => setRechecking(false), 400);
   };
 
-  const footer = status === "ready" ? (
-    <div className="flex flex-wrap justify-between gap-3">
-      <Link
-        href={`/projects/${projectId}/upload`}
-        className={buttonVariants({ variant: "outline", size: "default" })}
-      >
-        ← Загрузка
-      </Link>
-      <Link
-        href={`/projects/${projectId}/configure`}
-        className={cn(buttonVariants({ variant: "default", size: "default" }), "gap-2")}
-      >
-        Дальше → Настройка
-      </Link>
-    </div>
-  ) : null;
+  const goNext = async () => {
+    if (saveStatus === "saving") return;
+    if (isDirty) {
+      const ok = await persist(selectedIds);
+      if (!ok) return;
+    }
+    router.push(`/projects/${projectId}/configure`);
+  };
 
   if (status === "pending") {
     return (
@@ -278,15 +277,21 @@ export function ProjectAnalysisTab({ projectId, project }: Props) {
           </div>
           <div className="flex flex-col items-end gap-2 pt-1">
             <div className="text-xs text-muted-foreground">
-              {saving ? (
+              {saveStatus === "saving" ? (
                 <span className="inline-flex items-center gap-1">
                   <Loader2 className="size-3 animate-spin" aria-hidden /> сохраняем…
                 </span>
-              ) : savedAt ? (
+              ) : saveStatus === "ok" ? (
                 <span className="inline-flex items-center gap-1 text-emerald-600">
                   <Check className="size-3" aria-hidden /> сохранено
                 </span>
-              ) : null}
+              ) : saveStatus === "dirty" ? (
+                <span className="text-muted-foreground">Есть несохранённые изменения</span>
+              ) : (
+                <span className="text-red-600">
+                  {saveError ?? "Не удалось сохранить, попробуйте ещё"}
+                </span>
+              )}
             </div>
             <Button
               type="button"
@@ -317,8 +322,27 @@ export function ProjectAnalysisTab({ projectId, project }: Props) {
             })}
           </div>
 
-          <div className="text-xs text-muted-foreground">
-            {saving ? "Сохраняем выбор сегментов…" : savedAt ? "Выбор сохранён" : ""}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={!isDirty || saveStatus === "saving"}
+              className="gap-2"
+              onClick={() => void persist(selectedIds)}
+            >
+              {saveStatus === "saving" && <Loader2 className="size-4 animate-spin" aria-hidden />}
+              Сохранить черновик
+            </Button>
+
+            <Button
+              type="button"
+              className={cn("gap-2")}
+              onClick={() => void goNext()}
+              disabled={saveStatus === "saving"}
+            >
+              {saveStatus === "saving" && <Loader2 className="size-4 animate-spin" aria-hidden />}
+              Дальше → Настройка
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -333,8 +357,6 @@ export function ProjectAnalysisTab({ projectId, project }: Props) {
           onSaved={(next) => setAnalysisState(next)}
         />
       ) : null}
-
-      {footer}
 
       <Dialog open={recheckOpen} onOpenChange={setRecheckOpen}>
         <DialogContent className="sm:max-w-md">
