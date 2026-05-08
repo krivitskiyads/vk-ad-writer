@@ -237,6 +237,7 @@ export async function setProjectAnalysis(
   return updateProject(projectId, {
     analysis,
     selected_techniques: techniques,
+    selected_segment_ids: [],
     analysis_status: "ready",
   });
 }

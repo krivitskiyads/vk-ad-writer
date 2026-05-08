@@ -8,6 +8,7 @@ import {
 import { createServerSupabase } from "@/lib/supabase/server";
 import type { Project } from "@/lib/types/project";
 import type { SelectedTechniques } from "@/lib/types/knowledge-base";
+import type { ProjectAnalysis } from "@/lib/types/project-analysis";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -54,7 +55,10 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
   const b = (body ?? {}) as Record<string, unknown>;
   const fields: Partial<
-    Pick<Project, "name" | "description" | "selected_segment_ids" | "selected_techniques">
+    Pick<
+      Project,
+      "name" | "description" | "selected_segment_ids" | "selected_techniques" | "analysis"
+    >
   > = {};
   if (typeof b.name === "string") fields.name = b.name.trim();
   if (typeof b.description === "string" || b.description === null) {
@@ -67,6 +71,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   }
   if ("selected_techniques" in b) {
     fields.selected_techniques = b.selected_techniques as SelectedTechniques | null;
+  }
+  if ("analysis" in b) {
+    fields.analysis =
+      (b.analysis as ProjectAnalysis | null | undefined) === null
+        ? null
+        : ((b.analysis as ProjectAnalysis | undefined) ?? undefined);
   }
 
   if (Object.keys(fields).length === 0) {

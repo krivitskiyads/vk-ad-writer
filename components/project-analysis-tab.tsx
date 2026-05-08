@@ -6,7 +6,9 @@ import { useRouter } from "next/navigation";
 import { Check, Loader2, RefreshCw, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
-import { SegmentPill } from "@/components/segment-pill";
+import { BusinessSummaryCard } from "@/components/business-summary-card";
+import { SegmentCard } from "@/components/segment-card";
+import { SegmentDetailsDialog } from "@/components/segment-details-dialog";
 import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button";
 import {
@@ -34,7 +36,7 @@ type Props = {
   project: Project;
 };
 
-const SAVE_DEBOUNCE_MS = 600;
+const SAVE_DEBOUNCE_MS = 500;
 const POLL_MS = 8000;
 const ANALYZING_MESSAGES = [
   "Изучаем материалы…",
@@ -54,7 +56,10 @@ export function ProjectAnalysisTab({ projectId, project }: Props) {
   const router = useRouter();
 
   const analysis = useMemo(() => safeAnalysis(project.analysis), [project.analysis]);
-  const segments = analysis?.segments ?? [];
+  const [analysisState, setAnalysisState] = useState<ProjectAnalysis | null>(analysis);
+  useEffect(() => setAnalysisState(analysis), [analysis]);
+
+  const segments = analysisState?.segments ?? [];
   const allSegmentIds = useMemo(
     () =>
       segments
@@ -67,7 +72,7 @@ export function ProjectAnalysisTab({ projectId, project }: Props) {
     const saved = Array.isArray(project.selected_segment_ids)
       ? project.selected_segment_ids.filter((id) => allSegmentIds.includes(id))
       : [];
-    return saved.length > 0 ? saved : allSegmentIds;
+    return saved;
   }, [project.selected_segment_ids, allSegmentIds]);
 
   const [selectedIds, setSelectedIds] = useState<string[]>(defaultSelected);
@@ -75,6 +80,7 @@ export function ProjectAnalysisTab({ projectId, project }: Props) {
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialMount = useRef(true);
+  const [openSegmentId, setOpenSegmentId] = useState<string | null>(null);
 
   useEffect(() => {
     setSelectedIds(defaultSelected);
@@ -250,50 +256,24 @@ export function ProjectAnalysisTab({ projectId, project }: Props) {
     );
   }
 
-  // ready
-  const business = analysis?.business ?? {};
-  const positioning = analysis?.positioning ?? {};
-
   return (
     <div className="space-y-6">
-      <Card className="border-border">
-        <CardHeader>
-          <CardTitle>Главное про бизнес</CardTitle>
-          <CardDescription>Короткая выжимка из анализа</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3 text-sm">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-lg border border-border bg-muted/20 p-3">
-              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Ниша
-              </div>
-              <div className="mt-1">
-                {(business.niche ?? "").trim() || "—"}
-              </div>
-            </div>
-            <div className="rounded-lg border border-border bg-muted/20 p-3">
-              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Главное сообщение
-              </div>
-              <div className="mt-1">
-                {(positioning.main_message ?? "").trim() || "—"}
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      {/* BusinessSummaryCard — можно закомментировать одной строкой при откате */}
+      {analysisState ? (
+        <BusinessSummaryCard business={analysisState.business} positioning={analysisState.positioning} />
+      ) : null}
 
       <Card className="border-border">
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-1">
             <CardTitle>
-              Сегменты ЦА{" "}
+              Выберите сегменты для работы{" "}
               <span className="text-muted-foreground font-normal">
                 ({segments.length})
               </span>
             </CardTitle>
             <CardDescription>
-              Выберите, под какие сегменты пишем тексты. По умолчанию — все.
+              Выберите, под какие сегменты пишем тексты.
             </CardDescription>
           </div>
           <div className="flex flex-col items-end gap-2 pt-1">
@@ -321,16 +301,17 @@ export function ProjectAnalysisTab({ projectId, project }: Props) {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex flex-wrap gap-2">
+          <div className="space-y-3">
             {segments.map((s) => {
               const id = s.id!;
               const checked = selectedIds.includes(id);
               return (
-                <SegmentPill
+                <SegmentCard
                   key={id}
                   segment={s}
-                  checked={checked}
+                  selected={checked}
                   onToggle={() => toggle(id)}
+                  onOpenDetails={() => setOpenSegmentId(id)}
                 />
               );
             })}
@@ -341,6 +322,17 @@ export function ProjectAnalysisTab({ projectId, project }: Props) {
           </div>
         </CardContent>
       </Card>
+
+      {analysisState && openSegmentId ? (
+        <SegmentDetailsDialog
+          projectId={projectId}
+          open={Boolean(openSegmentId)}
+          onOpenChange={(v) => setOpenSegmentId(v ? openSegmentId : null)}
+          analysis={analysisState}
+          segmentId={openSegmentId}
+          onSaved={(next) => setAnalysisState(next)}
+        />
+      ) : null}
 
       {footer}
 
