@@ -11,7 +11,7 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
       <div className="text-xs uppercase tracking-wide text-gray-500">{label}</div>
-      <div className="text-sm text-gray-900 mt-1">{value}</div>
+      <div className="text-sm leading-snug text-gray-900 mt-1">{value}</div>
     </div>
   );
 }
@@ -24,11 +24,11 @@ function listOrDash(v: unknown): string[] {
 export function BusinessSummaryCard({ business }: Props) {
   const usp = listOrDash(business.usp);
   return (
-    <Card className="rounded-lg border border-gray-200 p-6">
+    <Card className="rounded-lg border border-gray-200 p-5">
       <div className="text-lg font-semibold">О бизнесе</div>
       <div className="text-sm text-gray-500 mt-1">Ниша, география и ключевые тезисы</div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 mt-4">
         <Field label="Ниша" value={(business.niche ?? "").trim() || "—"} />
         <Field label="Категория" value={(business.niche_category ?? "").trim() || "—"} />
         <Field label="Гео" value={(business.geo ?? "").trim() || "—"} />
@@ -41,8 +41,8 @@ export function BusinessSummaryCard({ business }: Props) {
         </div>
       </div>
 
-      <div className="mt-6">
-        <div className="text-sm font-semibold text-gray-900">УТП</div>
+      <div className="mt-5">
+        <div className="text-sm font-semibold text-gray-900 mb-2">УТП</div>
         {usp.length > 0 ? (
           <ul className="mt-2 list-disc list-inside text-sm text-gray-900">
             {usp.map((x) => (
@@ -54,7 +54,7 @@ export function BusinessSummaryCard({ business }: Props) {
         )}
       </div>
 
-      <p className="mt-6 text-sm text-gray-900">
+      <p className="mt-5 text-sm text-gray-900">
         {(business.description_summary ?? "").trim() || "—"}
       </p>
     </Card>

@@ -117,8 +117,8 @@ export function SegmentDetailsDialog({
         else onOpenChange(true);
       }}
     >
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader className="sticky top-0 bg-white pb-2">
           <DialogTitle>{mode === "edit" ? "Редактирование сегмента" : "Сегмент"}</DialogTitle>
         </DialogHeader>
 

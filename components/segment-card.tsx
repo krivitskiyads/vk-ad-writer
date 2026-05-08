@@ -26,14 +26,9 @@ export function SegmentCard({ segment, selected, onToggle, onOpenDetails }: Prop
       onClick={onOpenDetails}
     >
       <div className="flex items-start gap-4">
-        <Checkbox
-          checked={selected}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggle();
-          }}
-          className="mt-1"
-        />
+        <div onClick={(e) => e.stopPropagation()}>
+          <Checkbox checked={selected} onCheckedChange={onToggle} className="mt-1" />
+        </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-3">
             <h3 className="font-semibold text-gray-900">{segment.name}</h3>
