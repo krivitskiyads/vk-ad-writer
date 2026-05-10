@@ -167,7 +167,13 @@ export function ProjectAnalysisTab({ projectId, project }: Props) {
     setTimeout(() => setRechecking(false), 400);
   };
 
-  const goNext = async () => {
+  const isSaving = saveStatus === "saving";
+
+  const handleSaveDraft = () => {
+    void persist(selectedIds);
+  };
+
+  const handleNext = async () => {
     if (saveStatus === "saving") return;
     if (isDirty) {
       const ok = await persist(selectedIds);
@@ -175,6 +181,38 @@ export function ProjectAnalysisTab({ projectId, project }: Props) {
     }
     router.push(`/projects/${projectId}/configure`);
   };
+
+  const footer = (
+    <div className="mt-6 flex items-center justify-between border-t border-gray-200 pt-4">
+      <Button
+        type="button"
+        variant="outline"
+        onClick={handleSaveDraft}
+        disabled={!isDirty || isSaving}
+      >
+        {isSaving ? (
+          <>
+            <Loader2 className="mr-2 size-4 animate-spin" aria-hidden />
+            Сохраняем...
+          </>
+        ) : (
+          "Сохранить черновик"
+        )}
+      </Button>
+
+      <span className="text-sm text-gray-500">
+        {isSaving
+          ? "Сохраняем..."
+          : isDirty
+            ? "Есть несохранённые изменения"
+            : "✓ Сохранено"}
+      </span>
+
+      <Button type="button" onClick={() => void handleNext()} disabled={isSaving}>
+        Дальше → Настройка
+      </Button>
+    </div>
+  );
 
   if (status === "pending") {
     return (
@@ -322,28 +360,7 @@ export function ProjectAnalysisTab({ projectId, project }: Props) {
             })}
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={!isDirty || saveStatus === "saving"}
-              className="gap-2"
-              onClick={() => void persist(selectedIds)}
-            >
-              {saveStatus === "saving" && <Loader2 className="size-4 animate-spin" aria-hidden />}
-              Сохранить черновик
-            </Button>
-
-            <Button
-              type="button"
-              className={cn("gap-2")}
-              onClick={() => void goNext()}
-              disabled={saveStatus === "saving"}
-            >
-              {saveStatus === "saving" && <Loader2 className="size-4 animate-spin" aria-hidden />}
-              Дальше → Настройка
-            </Button>
-          </div>
+          {footer}
         </CardContent>
       </Card>
 
