@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import type { AnalysisSegment, ProjectAnalysis } from "@/lib/types/project-analysis";
@@ -22,6 +22,8 @@ type Props = {
   analysis: ProjectAnalysis;
   segmentId: string;
   onSaved?: (nextAnalysis: ProjectAnalysis) => void;
+  /** При открытии диалога сразу показать форму редактирования */
+  initialMode?: "view" | "edit";
 };
 
 function toLines(v: unknown): string {
@@ -51,6 +53,7 @@ export function SegmentDetailsDialog({
   analysis,
   segmentId,
   onSaved,
+  initialMode = "view",
 }: Props) {
   const segment = useMemo(
     () => analysis.segments.find((s) => s.id === segmentId) ?? null,
@@ -61,6 +64,23 @@ export function SegmentDetailsDialog({
   const [saving, setSaving] = useState(false);
 
   const [draft, setDraft] = useState<AnalysisSegment | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      setDraft(null);
+      setMode("view");
+      return;
+    }
+    const seg = analysis.segments.find((s) => s.id === segmentId) ?? null;
+    if (initialMode === "edit" && seg) {
+      setDraft(JSON.parse(JSON.stringify(seg)) as AnalysisSegment);
+      setMode("edit");
+    } else {
+      setDraft(null);
+      setMode("view");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- при открытии берём актуальный сегмент по id
+  }, [open, initialMode, segmentId]);
 
   const enterEdit = () => {
     if (!segment) return;

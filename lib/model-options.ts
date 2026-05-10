@@ -28,7 +28,7 @@ export const PRODUCT_MODEL_OPTIONS: Array<{
   },
   {
     id: "premium",
-    label: "Максимум",
+    label: "Зверь (ну очень мощная модель)",
     hint: "Самые проработанные тексты, медленнее",
   },
 ];

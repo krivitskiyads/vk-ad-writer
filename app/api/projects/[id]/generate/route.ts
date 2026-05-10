@@ -162,10 +162,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
       typeof settings.textCount === "number" && settings.textCount > 0
         ? Math.min(10, Math.max(1, Math.floor(settings.textCount)))
         : 5;
-    const textFormat: "short" | "long" | "mixed" =
-      settings.textFormat === "long" || settings.textFormat === "mixed"
-        ? settings.textFormat
-        : "short";
+    const textFormatNorm: "short" | "long" | "mixed" | "micro" =
+      settings.textFormat === "long"
+        ? "long"
+        : settings.textFormat === "mixed"
+          ? "mixed"
+          : settings.textFormat === "micro"
+            ? "micro"
+            : "short";
     const model =
       typeof settings.model === "string" && settings.model.trim()
         ? settings.model.trim()
@@ -216,7 +220,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
       console.error("[project-generate] knowledge load failed (non-fatal)", kbErr);
     }
 
-    const systemPrompt = buildCopywriterSystemPrompt(knowledgeForCopywriter);
+    const systemPrompt = buildCopywriterSystemPrompt(knowledgeForCopywriter, {
+      textFormat: textFormatNorm,
+    });
 
     const analysisForPrompt: ProjectAnalysis = {
       ...analysisNorm,
@@ -227,9 +233,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
       { length: textCount },
       (_, i) => APPROACH_POOL[i % APPROACH_POOL.length]
     );
-    const formats = Array.from({ length: textCount }, (_, i) => {
-      if (textFormat === "mixed") return "mixed";
-      return textFormat;
+    const formats = Array.from({ length: textCount }, () => {
+      if (textFormatNorm === "mixed") return "mixed";
+      return textFormatNorm;
     });
     const segmentAssignments = Array.from(
       { length: textCount },
@@ -241,7 +247,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         analysis: analysisForPrompt,
         segment: segmentAssignments[i],
         trafficDestination,
-        textFormat: formats[i] as "short" | "long" | "mixed",
+        textFormat: formats[i] as "short" | "long" | "mixed" | "micro",
         approach: approaches[i],
         customWishes: augmentedWishes || undefined,
         textIndex: i + 1,

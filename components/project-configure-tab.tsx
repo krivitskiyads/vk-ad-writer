@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, Loader2, Minus, Plus, RefreshCw, Sparkles } from "lucide-react";
+import { Check, Loader2, Minus, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
+import { SegmentDetailsDialog } from "@/components/segment-details-dialog";
 import { TechniquesEditor } from "@/components/techniques-editor";
 import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button";
@@ -16,7 +17,17 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Textarea } from "@/components/ui/textarea";
+import { TEXT_FORMAT_OPTIONS } from "@/lib/generation-settings";
+import {
+  PRODUCT_MODEL_OPTIONS,
+  type ModelPresetId,
+} from "@/lib/model-options";
 import type { Project } from "@/lib/types/project";
+import type { AnalysisSegment, ProjectAnalysis } from "@/lib/types/project-analysis";
+import { toProjectAnalysis, withStableSegmentIds } from "@/lib/types/project-analysis";
 import type { SelectedTechniques } from "@/lib/types/knowledge-base";
 import { cn } from "@/lib/utils";
 
@@ -24,12 +35,13 @@ type ApiSettings = {
   project_id: string;
   model: string;
   count: number;
-  length: "short" | "medium" | "long" | "mixed";
+  length: "micro" | "short" | "long" | "mixed";
   trafficDestination?: string;
+  customWishes?: string;
 };
 
 type ModelId = "fast" | "optimal" | "max";
-type LengthId = "short" | "medium" | "long" | "mixed";
+type LengthId = "micro" | "short" | "long" | "mixed";
 type TrafficDestinationId =
   | "community"
   | "website"
@@ -54,6 +66,14 @@ const TRAFFIC_BY_ID: Record<TrafficDestinationId, string> = {
   messages: "community_messages",
 };
 
+const TRAFFIC_CHOICES: { id: TrafficDestinationId; label: string }[] = [
+  { id: "community", label: "Сообщество ВКонтакте" },
+  { id: "website", label: "Сайт или лендинг" },
+  { id: "lead_magnet", label: "Лид-магнит или квиз" },
+  { id: "lead_form", label: "Лид-форма ВКонтакте" },
+  { id: "messages", label: "Сообщения сообщества" },
+];
+
 function trafficIdFromString(v: string | null | undefined): TrafficDestinationId {
   const x = (v ?? "").trim();
   if (x === "community_subscribe") return "community";
@@ -71,17 +91,65 @@ function modelIdFromString(model: string | null | undefined): ModelId {
   return "optimal";
 }
 
+function toPreset(id: ModelId): ModelPresetId {
+  if (id === "fast") return "fast";
+  if (id === "max") return "premium";
+  return "balanced";
+}
+
+function fromPreset(p: ModelPresetId): ModelId {
+  if (p === "fast") return "fast";
+  if (p === "premium") return "max";
+  return "optimal";
+}
+
 function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
 }
 
-function buttonClass(active: boolean): string {
+function radioRowClass(selected: boolean): string {
   return cn(
-    buttonVariants({
-      variant: active ? "default" : "outline",
-      size: "sm",
-    }),
-    "px-3"
+    "flex cursor-pointer items-center gap-3 rounded-lg border border-border bg-white px-3 py-2 transition-colors hover:bg-muted/30",
+    selected &&
+      "border-l-2 border-l-violet-500 bg-violet-50 ring-1 ring-violet-500/20"
+  );
+}
+
+function radioItemClass(): string {
+  return cn(
+    "border-input text-violet-600 data-checked:border-violet-600 data-checked:bg-violet-600 data-checked:text-white",
+    "[&_[data-slot=radio-group-indicator]_span]:bg-white"
+  );
+}
+
+function segmentPreview(s: AnalysisSegment): string {
+  if (s.description?.trim()) return s.description.trim();
+  const pains = Array.isArray(s.pain_points)
+    ? s.pain_points.filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+    : [];
+  if (pains.length) return pains.join(". ");
+  return "Нет описания — нажми, чтобы добавить";
+}
+
+function PriorityPill({ priority }: { priority?: string }) {
+  const v = (priority ?? "medium").toLowerCase();
+  const label =
+    v === "high" ? "Высокий" : v === "low" ? "Низкий" : "Средний";
+  const cls =
+    v === "high"
+      ? "bg-violet-100 text-violet-800"
+      : v === "low"
+        ? "bg-slate-100 text-slate-700"
+        : "bg-gray-100 text-gray-800";
+  return (
+    <span
+      className={cn(
+        "shrink-0 rounded-full px-2 py-0.5 text-xs font-medium",
+        cls
+      )}
+    >
+      {label}
+    </span>
   );
 }
 
@@ -94,12 +162,27 @@ type Props = {
 export function ProjectConfigureTab({ projectId, project, initialSettings }: Props) {
   const router = useRouter();
 
+  const analysisNorm = useMemo(() => {
+    const raw = project.analysis;
+    if (!raw) return null;
+    const p = toProjectAnalysis(raw);
+    return p ? withStableSegmentIds(p) : null;
+  }, [project.analysis]);
+
+  const [analysisState, setAnalysisState] = useState<ProjectAnalysis | null>(
+    analysisNorm
+  );
+  useEffect(() => setAnalysisState(analysisNorm), [analysisNorm]);
+
+  const [openSegmentId, setOpenSegmentId] = useState<string | null>(null);
+
   const defaults: ApiSettings = useMemo(
     () => ({
       project_id: projectId,
       model: "claude-sonnet-4-6",
       count: 5,
-      length: "medium",
+      length: "mixed",
+      customWishes: "",
     }),
     [projectId]
   );
@@ -107,15 +190,27 @@ export function ProjectConfigureTab({ projectId, project, initialSettings }: Pro
   const init = initialSettings ?? defaults;
   const [modelId, setModelId] = useState<ModelId>(() => modelIdFromString(init.model));
   const [count, setCount] = useState(() => clamp(init.count ?? 5, 1, 10));
-  const [length, setLength] = useState<LengthId>(() => init.length ?? "medium");
+  const [length, setLength] = useState<LengthId>(() => init.length ?? "mixed");
   const [trafficId, setTrafficId] = useState<TrafficDestinationId>(() =>
     trafficIdFromString(init.trafficDestination)
   );
+  const [wishes, setWishes] = useState(() => init.customWishes ?? "");
 
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialMount = useRef(true);
+
+  const [generating, setGenerating] = useState(false);
+
+  const selectedSegments = useMemo(() => {
+    if (!analysisState) return [];
+    const ids = project.selected_segment_ids ?? [];
+    return analysisState.segments.filter(
+      (s): s is AnalysisSegment & { id: string } =>
+        Boolean(s.id) && ids.includes(s.id!)
+    );
+  }, [analysisState, project.selected_segment_ids]);
 
   useEffect(() => {
     if (initialMount.current) {
@@ -130,7 +225,7 @@ export function ProjectConfigureTab({ projectId, project, initialSettings }: Pro
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelId, count, length]);
+  }, [modelId, count, length, wishes]);
 
   const persist = async () => {
     setSaving(true);
@@ -142,6 +237,7 @@ export function ProjectConfigureTab({ projectId, project, initialSettings }: Pro
           model: MODEL_BY_ID[modelId],
           count,
           length,
+          customWishes: wishes,
         }),
       });
       if (!res.ok) {
@@ -183,6 +279,8 @@ export function ProjectConfigureTab({ projectId, project, initialSettings }: Pro
 
   useEffect(() => {
     setTechniques(project.selected_techniques ?? null);
+    // Синхронизируем только при смене проекта (как при router.refresh после сохранения).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project.id]);
 
   useEffect(() => {
@@ -226,124 +324,214 @@ export function ProjectConfigureTab({ projectId, project, initialSettings }: Pro
     schedulePersistTechniques(ai);
   };
 
+  const runGenerate = async () => {
+    if (selectedSegments.length === 0) {
+      toast.error("Выберите сегменты на вкладке «Анализ»");
+      return;
+    }
+    setGenerating(true);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          typeof data.error === "string" ? data.error : "Генерация не удалась"
+        );
+      }
+      router.push(`/projects/${projectId}/texts`);
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Ошибка");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const modelPreset = toPreset(modelId);
+
   return (
-    <div className="space-y-6">
-      <Card className="border-border">
-        <CardHeader>
-          <CardTitle>Куда ведём трафик</CardTitle>
-          <CardDescription>От этого зависит стиль и финал текста</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              className={buttonClass(trafficId === "community")}
-              onClick={() => {
-                setTrafficId("community");
-                void persistTraffic("community");
-              }}
-            >
-              Сообщество ВКонтакте
-            </button>
-            <button
-              type="button"
-              className={buttonClass(trafficId === "website")}
-              onClick={() => {
-                setTrafficId("website");
-                void persistTraffic("website");
-              }}
-            >
-              Сайт или лендинг
-            </button>
-            <button
-              type="button"
-              className={buttonClass(trafficId === "lead_magnet")}
-              onClick={() => {
-                setTrafficId("lead_magnet");
-                void persistTraffic("lead_magnet");
-              }}
-            >
-              Лид-магнит или квиз
-            </button>
-            <button
-              type="button"
-              className={buttonClass(trafficId === "lead_form")}
-              onClick={() => {
-                setTrafficId("lead_form");
-                void persistTraffic("lead_form");
-              }}
-            >
-              Лид-форма ВКонтакте
-            </button>
-            <button
-              type="button"
-              className={buttonClass(trafficId === "messages")}
-              onClick={() => {
-                setTrafficId("messages");
-                void persistTraffic("messages");
-              }}
-            >
-              Сообщения сообщества
-            </button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="border-border">
-        <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <CardTitle>Параметры генерации</CardTitle>
-            <CardDescription>
-              Модель, количество и длина будущих текстов.
-            </CardDescription>
-          </div>
-          <div className="text-xs text-muted-foreground pt-1">
-            {saving ? (
-              <span className="inline-flex items-center gap-1">
-                <Loader2 className="size-3 animate-spin" aria-hidden /> сохраняем…
-              </span>
-            ) : savedAt && Date.now() - savedAt < 2000 ? (
-              <span className="inline-flex items-center gap-1 text-emerald-600">
-                <Check className="size-3" aria-hidden /> сохранено
-              </span>
-            ) : null}
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="space-y-2">
-            <div className="text-sm font-medium">Модель</div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                className={buttonClass(modelId === "fast")}
-                onClick={() => setModelId("fast")}
-              >
-                Быстрая
-              </button>
-              <button
-                type="button"
-                className={buttonClass(modelId === "optimal")}
-                onClick={() => setModelId("optimal")}
-              >
-                Оптимальная
-              </button>
-              <button
-                type="button"
-                className={buttonClass(modelId === "max")}
-                onClick={() => setModelId("max")}
-              >
-                Максимум
-              </button>
+    <div className="space-y-6 bg-violet-50/50 rounded-xl border border-violet-100/80 p-4 sm:p-6">
+      <div className="mx-auto max-w-4xl space-y-6">
+        <Card className="border-border bg-white shadow-sm">
+          <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <CardTitle>Выбранные сегменты</CardTitle>
+              <CardDescription>
+                Нажми на карточку чтобы поправить текст сегмента
+              </CardDescription>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Быстрая — экономично. Оптимальная (рекомендуем) — баланс. Максимум —
-              самые проработанные тексты, медленнее.
-            </p>
-          </div>
+            <Link
+              href={`/projects/${projectId}/analysis`}
+              className={buttonVariants({ variant: "outline", size: "sm" })}
+            >
+              Изменить выбор
+            </Link>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {selectedSegments.length === 0 ? (
+              <div className="space-y-3 rounded-lg border border-dashed border-border bg-white/80 px-4 py-6 text-center">
+                <p className="text-muted-foreground text-sm">Нет выбранных сегментов</p>
+                <Link
+                  href={`/projects/${projectId}/analysis`}
+                  className={buttonVariants({ variant: "default", size: "sm" })}
+                >
+                  Перейти к анализу
+                </Link>
+              </div>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {selectedSegments.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => setOpenSegmentId(s.id!)}
+                    className={cn(
+                      "rounded-xl border border-border bg-white p-4 text-left shadow-sm transition-shadow hover:shadow-md",
+                      "focus-visible:ring-violet-500/50 outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="font-medium text-foreground">{s.name}</span>
+                      <PriorityPill priority={s.priority} />
+                    </div>
+                    <p className="text-muted-foreground mt-2 line-clamp-3 text-sm">
+                      {segmentPreview(s)}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-          <div className="space-y-2">
-            <div className="text-sm font-medium">Количество текстов</div>
-            <div className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-2 py-1.5">
+        <Card className="border-border bg-white shadow-sm">
+          <CardHeader>
+            <CardTitle>Куда ведём трафик?</CardTitle>
+            <CardDescription>Это влияет на CTA и тональность</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <RadioGroup
+              value={trafficId}
+              onValueChange={(v) => {
+                const id = v as TrafficDestinationId;
+                setTrafficId(id);
+                void persistTraffic(id);
+              }}
+              className="grid gap-2"
+            >
+              {TRAFFIC_CHOICES.map((opt) => (
+                <label
+                  key={opt.id}
+                  className={radioRowClass(trafficId === opt.id)}
+                >
+                  <RadioGroupItem
+                    value={opt.id}
+                    className={radioItemClass()}
+                  />
+                  <span className="text-sm">{opt.label}</span>
+                </label>
+              ))}
+            </RadioGroup>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border bg-white shadow-sm">
+          <CardHeader>
+            <CardTitle>Формат текстов</CardTitle>
+            <CardDescription>Длина основного текста объявления</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <RadioGroup
+              value={length}
+              onValueChange={(v) => setLength(v as LengthId)}
+              className="grid gap-2"
+            >
+              {TEXT_FORMAT_OPTIONS.map((opt) => (
+                <label
+                  key={opt.value}
+                  className={radioRowClass(length === opt.value)}
+                >
+                  <RadioGroupItem
+                    value={opt.value}
+                    className={radioItemClass()}
+                  />
+                  <div className="min-w-0">
+                    <span className="text-sm">{opt.label}</span>
+                    {opt.hint ? (
+                      <p className="text-muted-foreground text-xs">{opt.hint}</p>
+                    ) : null}
+                  </div>
+                </label>
+              ))}
+            </RadioGroup>
+            {length === "mixed" && (
+              <p className="text-muted-foreground text-xs">
+                Нейросеть сама подбирает длину под каждый текст — где-то короче,
+                где-то развёрнуто
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border-border bg-white shadow-sm">
+          <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <CardTitle>Модель</CardTitle>
+              <CardDescription>Влияет на качество текстов и скорость</CardDescription>
+            </div>
+            <div className="text-xs text-muted-foreground pt-1">
+              {saving ? (
+                <span className="inline-flex items-center gap-1">
+                  <Loader2 className="size-3 animate-spin" aria-hidden /> сохраняем…
+                </span>
+              ) : savedAt && Date.now() - savedAt < 2000 ? (
+                <span className="inline-flex items-center gap-1 text-emerald-600">
+                  <Check className="size-3" aria-hidden /> сохранено
+                </span>
+              ) : null}
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <RadioGroup
+              value={modelPreset}
+              onValueChange={(v) => setModelId(fromPreset(v as ModelPresetId))}
+              className="grid gap-2"
+            >
+              {PRODUCT_MODEL_OPTIONS.map((opt) => (
+                <label
+                  key={opt.id}
+                  className={radioRowClass(modelPreset === opt.id)}
+                >
+                  <RadioGroupItem value={opt.id} className={radioItemClass()} />
+                  <div className="min-w-0">
+                    <span className="text-sm font-medium">
+                      {opt.label}
+                      {opt.recommended ? (
+                        <span className="text-muted-foreground ml-1 text-xs font-normal">
+                          (рекомендуем)
+                        </span>
+                      ) : null}
+                    </span>
+                    <p className="text-muted-foreground text-xs">{opt.hint}</p>
+                  </div>
+                </label>
+              ))}
+            </RadioGroup>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border bg-white shadow-sm">
+          <CardHeader>
+            <CardTitle>Сколько текстов?</CardTitle>
+            <CardDescription>От 1 до 10</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Label className="mb-2 block text-sm font-medium">Количество</Label>
+            <div className="inline-flex items-center gap-2 rounded-md border border-border bg-white px-2 py-1.5">
               <button
                 type="button"
                 className="rounded-md px-2 py-1 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -362,118 +550,111 @@ export function ProjectConfigureTab({ projectId, project, initialSettings }: Pro
                 <Plus className="size-4" aria-hidden />
               </button>
             </div>
-          </div>
+          </CardContent>
+        </Card>
 
-          <div className="space-y-2">
-            <div className="text-sm font-medium">Длина</div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                className={buttonClass(length === "short")}
-                onClick={() => setLength("short")}
-              >
-                Короткий
-              </button>
-              <button
-                type="button"
-                className={buttonClass(length === "medium")}
-                onClick={() => setLength("medium")}
-              >
-                Средний
-              </button>
-              <button
-                type="button"
-                className={buttonClass(length === "long")}
-                onClick={() => setLength("long")}
-              >
-                Длинный
-              </button>
-              <button
-                type="button"
-                className={buttonClass(length === "mixed")}
-                onClick={() => setLength("mixed")}
-              >
-                Микс
-              </button>
-            </div>
-            {length === "mixed" && (
-              <p className="text-xs text-muted-foreground">
-                AI сам подбирает длину под каждый текст — где-то короче, где-то
-                развёрнуто, под боль и сегмент
-              </p>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+        <Card className="border-border bg-white shadow-sm">
+          <CardHeader>
+            <CardTitle>Пожелания (необязательно)</CardTitle>
+            <CardDescription>Любые уточнения по стилю и акцентам</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Textarea
+              value={wishes}
+              onChange={(e) => setWishes(e.target.value)}
+              placeholder="Например: сделай упор на боль с ценами, разговорный стиль, конкретные цифры…"
+              rows={5}
+              className="bg-white"
+            />
+          </CardContent>
+        </Card>
 
-      <Card className="border-border">
-        <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <CardTitle>Стратегия копирайтинга</CardTitle>
-            <CardDescription>
-              Формула, триггеры и структуры для генерации.
-            </CardDescription>
-          </div>
-          <div className="flex flex-col items-end gap-2 pt-1">
-            <div className="text-xs text-muted-foreground">
-              {techSaving ? (
-                <span className="inline-flex items-center gap-1">
-                  <Loader2 className="size-3 animate-spin" aria-hidden /> сохраняем…
-                </span>
-              ) : techSavedAt && Date.now() - techSavedAt < 2000 ? (
-                <span className="inline-flex items-center gap-1 text-emerald-600">
-                  <Check className="size-3" aria-hidden /> сохранено
-                </span>
-              ) : null}
+        <Card className="border-border bg-white shadow-sm">
+          <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <CardTitle>Стратегия копирайтинга</CardTitle>
+              <CardDescription>
+                Формула, триггеры и структуры для генерации.
+              </CardDescription>
             </div>
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              className="gap-2"
-              onClick={resetToAi}
-              disabled={!project.analysis?.selected_techniques}
-            >
-              <RefreshCw className="size-3.5" aria-hidden />
-              Сбросить выбор AI
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <TechniquesEditor
-            initialSelected={project.analysis?.selected_techniques ?? null}
-            value={
-              techniques ?? {
-                triggers: [],
-                formulas: [],
-                structures: [],
-                reasoning: "",
+            <div className="flex flex-col items-end gap-2 pt-1">
+              <div className="text-xs text-muted-foreground">
+                {techSaving ? (
+                  <span className="inline-flex items-center gap-1">
+                    <Loader2 className="size-3 animate-spin" aria-hidden /> сохраняем…
+                  </span>
+                ) : techSavedAt && Date.now() - techSavedAt < 2000 ? (
+                  <span className="inline-flex items-center gap-1 text-emerald-600">
+                    <Check className="size-3" aria-hidden /> сохранено
+                  </span>
+                ) : null}
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="gap-2"
+                onClick={resetToAi}
+                disabled={!project.analysis?.selected_techniques}
+              >
+                <RefreshCw className="size-3.5" aria-hidden />
+                Сбросить выбор AI
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <TechniquesEditor
+              initialSelected={project.analysis?.selected_techniques ?? null}
+              value={
+                techniques ?? {
+                  triggers: [],
+                  formulas: [],
+                  structures: [],
+                  reasoning: "",
+                }
               }
-            }
-            onChange={(next) => {
-              setTechniques(next);
-              schedulePersistTechniques(next);
-            }}
-          />
-        </CardContent>
-      </Card>
+              onChange={(next) => {
+                setTechniques(next);
+                schedulePersistTechniques(next);
+              }}
+            />
+          </CardContent>
+        </Card>
 
-      <div className="flex flex-wrap justify-between gap-3">
-        <Link
-          href={`/projects/${projectId}/analysis`}
-          className={buttonVariants({ variant: "outline", size: "default" })}
-        >
-          ← Анализ
-        </Link>
-        <Link
-          href={`/projects/${projectId}/texts`}
-          className={cn(buttonVariants({ variant: "default", size: "default" }), "gap-2")}
-        >
-          <Sparkles className="size-4" aria-hidden />
-          Дальше → К генерации
-        </Link>
+        <div className="flex flex-wrap justify-end gap-3 pt-2">
+          <Button
+            type="button"
+            size="lg"
+            disabled={
+              generating || selectedSegments.length === 0 || !analysisState
+            }
+            className="min-w-[200px] gap-2 bg-violet-600 text-white hover:bg-violet-700"
+            onClick={() => void runGenerate()}
+          >
+            {generating ? (
+              <>
+                <Loader2 className="size-4 animate-spin" aria-hidden />
+                Создаём варианты…
+              </>
+            ) : (
+              "Сгенерировать тексты"
+            )}
+          </Button>
+        </div>
       </div>
+
+      {analysisState && openSegmentId ? (
+        <SegmentDetailsDialog
+          key={openSegmentId}
+          projectId={projectId}
+          open={Boolean(openSegmentId)}
+          onOpenChange={(v) => setOpenSegmentId(v ? openSegmentId : null)}
+          analysis={analysisState}
+          segmentId={openSegmentId}
+          initialMode="edit"
+          onSaved={(next) => setAnalysisState(next)}
+        />
+      ) : null}
     </div>
   );
 }
-

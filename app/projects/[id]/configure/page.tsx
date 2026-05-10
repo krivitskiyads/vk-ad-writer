@@ -3,6 +3,16 @@ import { notFound } from "next/navigation";
 import { ProjectConfigureTab } from "@/components/project-configure-tab";
 import { getProject, getProjectSettings } from "@/lib/supabase/queries";
 
+function mapStoredTextFormat(
+  tf: string | undefined
+): "micro" | "short" | "long" | "mixed" {
+  if (tf === "micro") return "micro";
+  if (tf === "short") return "short";
+  if (tf === "long") return "long";
+  if (tf === "mixed") return "mixed";
+  return "mixed";
+}
+
 export default async function ProjectConfigurePage({
   params,
 }: {
@@ -25,18 +35,12 @@ export default async function ProjectConfigurePage({
               project_id: id,
               model: settings.model ?? "claude-sonnet-4-6",
               count: settings.textCount ?? 5,
-              length:
-                settings.textFormat === "short"
-                  ? "short"
-                  : settings.textFormat === "long"
-                    ? "long"
-                    : settings.textFormat === "mixed"
-                      ? "mixed"
-                    : "medium",
+              length: mapStoredTextFormat(settings.textFormat),
+              trafficDestination: settings.trafficDestination,
+              customWishes: settings.customWishes ?? "",
             }
           : null
       }
     />
   );
 }
-

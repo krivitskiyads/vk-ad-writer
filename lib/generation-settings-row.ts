@@ -13,7 +13,7 @@ export function dbRowToGenerationSettings(
   const rawWishes = String(row.custom_wishes ?? row.customWishes ?? "");
   const tf = (row.text_format ?? row.textFormat ?? "short") as string;
   const textFormat: TextFormat =
-    tf === "long" || tf === "mixed" ? tf : "short";
+    tf === "micro" || tf === "long" || tf === "mixed" ? tf : "short";
   const td = (row.traffic_destination ??
     row.trafficDestination ??
     "site") as TrafficDestination;

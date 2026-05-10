@@ -33,7 +33,7 @@ export type TrafficDestination =
   | "quiz"
   | "avito";
 
-export type TextFormat = "short" | "long" | "mixed";
+export type TextFormat = "micro" | "short" | "long" | "mixed";
 
 export type GenerationSettings = {
   trafficDestination: TrafficDestination;
@@ -60,9 +60,15 @@ export const TRAFFIC_OPTIONS: Array<{
 export const TEXT_FORMAT_OPTIONS: Array<{
   value: TextFormat;
   label: string;
+  hint?: string;
 }> = [
-  { value: "short", label: "Короткие (300-500 символов)" },
-  { value: "long", label: "Длинные (700-1200 символов)" },
+  {
+    value: "micro",
+    label: "Микро (заголовок + призыв) — для подписки на сообщество",
+    hint: "80–200 символов",
+  },
+  { value: "short", label: "Короткие (300–500 символов)" },
+  { value: "long", label: "Длинные (700–1200 символов)" },
   { value: "mixed", label: "Микс (и короткие, и длинные)" },
 ];
 

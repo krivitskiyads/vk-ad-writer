@@ -31,6 +31,7 @@ type Props = {
 };
 
 function lengthLabel(tf: string | null | undefined): string {
+  if (tf === "micro") return "Микро";
   if (tf === "short") return "Короткий";
   if (tf === "long") return "Длинный";
   if (tf === "mixed") return "Микс";

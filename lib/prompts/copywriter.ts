@@ -83,8 +83,11 @@ function formatGroup<T>(items: T[], formatter: (x: T) => string): string {
   return items.map(formatter).join("\n\n");
 }
 
+export type CopywriterTextFormat = "short" | "long" | "mixed" | "micro";
+
 export function buildCopywriterSystemPrompt(
-  knowledge: CopywriterKnowledge | null | undefined
+  knowledge: CopywriterKnowledge | null | undefined,
+  opts?: { textFormat?: CopywriterTextFormat }
 ): string {
   const formulas = knowledge?.formulas ?? [];
   const triggers = knowledge?.triggers ?? [];
@@ -141,6 +144,18 @@ ${structuresBlock}
 
   const TECHNIQUES_PLACEHOLDER = "__TECHNIQUES_BLOCK__";
 
+  const microSection =
+    opts?.textFormat === "micro"
+      ? `
+
+═══════════════════════════════════════════════════
+МИКРО-ФОРМАТ
+═══════════════════════════════════════════════════
+
+Микро-формат: 80–200 символов. Только цепляющий заголовок (короткая фраза-крючок) и короткий призыв к действию. Идеально для рекламы с целью «подписка на сообщество» в VK Ads. Без длинных описаний, без историй, без перечня выгод. Цель — зацепить и сразу получить подписку.
+`
+      : "";
+
   const basePrompt = `Ты — AI-копирайтер, специализирующийся на рекламных текстах для таргетированной рекламы ВКонтакте. 11 лет опыта, 300+ кампаний.
 
 ТВОЯ ЗАДАЧА
@@ -153,7 +168,7 @@ ${noEmDashSection}
 — Анализ бизнеса (ниша, гео, УТП, позиционирование)
 — Выбранные сегменты ЦА с болями, возражениями, триггерами
 — Куда ведётся трафик (лид-форма, Senler, сообщения и т.д.)
-— Формат текстов (короткий / длинный / микс)
+— Формат текстов (микро / короткий / длинный / микс)
 — Количество текстов
 — Пожелания таргетолога (если есть)
 — Примеры текстов-референсов (если есть) — анализируй их стиль, тональность и структуру, и используй как ориентир
@@ -251,6 +266,7 @@ ${noEmDashSection}
 2. Первое предложение — самое важное. Оно видно до "показать полностью" в ленте ВК. Оно должно цеплять и останавливать скролл.
 
 3. Длина:
+   — Микро: 80–200 символов; только заголовок-крючок и короткий призыв
    — Короткий: 300-500 символов
    — Длинный: 700-1200 символов
 
@@ -268,6 +284,7 @@ ${noEmDashSection}
 
 10. Если даны референсы текстов — проанализируй их стиль, структуру, тональность, длину и используй как ориентир. Не копируй их дословно, но пиши в похожем стиле.
 
+${microSection}
 ${TECHNIQUES_PLACEHOLDER}
 ОГРАНИЧЕНИЯ МОДЕРАЦИИ ВК
 
@@ -293,7 +310,7 @@ export function buildCopywriterUserPrompt(input: {
   analysis: ProjectAnalysis;
   selectedSegments: AnalysisSegment[];
   trafficDestination: string;
-  textFormat: "short" | "long" | "mixed";
+  textFormat: CopywriterTextFormat;
   textCount: number;
   customWishes?: string;
   referenceTexts?: string;
@@ -368,7 +385,7 @@ export function buildSingleTextUserPrompt(input: {
   analysis: ProjectAnalysis;
   segment: AnalysisSegment;
   trafficDestination: string;
-  textFormat: "short" | "long" | "mixed";
+  textFormat: CopywriterTextFormat;
   approach: string;
   customWishes?: string;
   referenceTexts?: string;
@@ -391,7 +408,12 @@ export function buildSingleTextUserPrompt(input: {
     totalTexts,
   } = input;
 
-  const lengthInstructions: Record<"short" | "medium" | "long" | "mixed", string> = {
+  const lengthInstructions: Record<
+    "short" | "medium" | "long" | "mixed" | "micro",
+    string
+  > = {
+    micro:
+      "Длина: микро-формат — 80–200 символов всего. Только цепляющий заголовок (короткая фраза-крючок) и короткий призыв к действию. Без длинных описаний, историй и перечня выгод.",
     short: "Длина: короткий текст — 1-3 коротких абзаца, концентрированно",
     medium: "Длина: средний текст — 4-6 абзацев, развёрнуто но без воды",
     long: "Длина: длинный текст — 7+ абзацев, детально с раскрытием боли и решения",
@@ -399,8 +421,14 @@ export function buildSingleTextUserPrompt(input: {
       "Длина: подбери оптимальную длину под конкретную боль и сегмент. Где-то достаточно 2 абзацев, где-то нужно 6-8. Решай сам — главное чтобы текст работал на конверсию.",
   };
 
-  const lengthKey: "short" | "medium" | "long" | "mixed" =
-    textFormat === "short" ? "short" : textFormat === "long" ? "long" : "mixed";
+  const lengthKey: "short" | "medium" | "long" | "mixed" | "micro" =
+    textFormat === "micro"
+      ? "micro"
+      : textFormat === "short"
+        ? "short"
+        : textFormat === "long"
+          ? "long"
+          : "mixed";
 
   return [
     `Сгенерируй ОДИН рекламный текст (текст ${textIndex} из ${totalTexts}).`,
