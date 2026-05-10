@@ -1,3 +1,4 @@
+import type { Gender, Income } from "@/lib/segment-options";
 import type { SelectedTechniques } from "@/lib/types/knowledge-base";
 
 /** Структура ответа аналитика (JSON из Claude). */
@@ -29,8 +30,9 @@ export type AnalysisSegment = {
   demographics?: {
     age_from?: number;
     age_to?: number;
-    gender?: string;
-    income?: string;
+    /** Нормализованные ключи; в БД может лежать и произвольная строка (см. normalizeGender). */
+    gender?: Gender | string;
+    income?: Income | string;
   };
   pain_points?: string[];
   desires?: string[];

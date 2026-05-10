@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Check, Loader2, Minus, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
-import { SegmentDetailsDialog } from "@/components/segment-details-dialog";
+import { SegmentCardExpandable } from "@/components/segment-card-expandable";
 import { TechniquesEditor } from "@/components/techniques-editor";
 import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button";
@@ -122,37 +122,6 @@ function radioItemClass(): string {
   );
 }
 
-function segmentPreview(s: AnalysisSegment): string {
-  if (s.description?.trim()) return s.description.trim();
-  const pains = Array.isArray(s.pain_points)
-    ? s.pain_points.filter((x): x is string => typeof x === "string" && x.trim().length > 0)
-    : [];
-  if (pains.length) return pains.join(". ");
-  return "Нет описания — нажми, чтобы добавить";
-}
-
-function PriorityPill({ priority }: { priority?: string }) {
-  const v = (priority ?? "medium").toLowerCase();
-  const label =
-    v === "high" ? "Высокий" : v === "low" ? "Низкий" : "Средний";
-  const cls =
-    v === "high"
-      ? "bg-violet-100 text-violet-800"
-      : v === "low"
-        ? "bg-slate-100 text-slate-700"
-        : "bg-gray-100 text-gray-800";
-  return (
-    <span
-      className={cn(
-        "shrink-0 rounded-full px-2 py-0.5 text-xs font-medium",
-        cls
-      )}
-    >
-      {label}
-    </span>
-  );
-}
-
 type Props = {
   projectId: string;
   project: Project;
@@ -173,8 +142,6 @@ export function ProjectConfigureTab({ projectId, project, initialSettings }: Pro
     analysisNorm
   );
   useEffect(() => setAnalysisState(analysisNorm), [analysisNorm]);
-
-  const [openSegmentId, setOpenSegmentId] = useState<string | null>(null);
 
   const defaults: ApiSettings = useMemo(
     () => ({
@@ -361,7 +328,7 @@ export function ProjectConfigureTab({ projectId, project, initialSettings }: Pro
             <div>
               <CardTitle>Выбранные сегменты</CardTitle>
               <CardDescription>
-                Нажми на карточку чтобы поправить текст сегмента
+                Нажми на карточку чтобы развернуть и поправить текст сегмента
               </CardDescription>
             </div>
             <Link
@@ -383,26 +350,17 @@ export function ProjectConfigureTab({ projectId, project, initialSettings }: Pro
                 </Link>
               </div>
             ) : (
-              <div className="grid gap-3 sm:grid-cols-2">
-                {selectedSegments.map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => setOpenSegmentId(s.id!)}
-                    className={cn(
-                      "rounded-xl border border-border bg-white p-4 text-left shadow-sm transition-shadow hover:shadow-md",
-                      "focus-visible:ring-violet-500/50 outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-                    )}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="font-medium text-foreground">{s.name}</span>
-                      <PriorityPill priority={s.priority} />
-                    </div>
-                    <p className="text-muted-foreground mt-2 line-clamp-3 text-sm">
-                      {segmentPreview(s)}
-                    </p>
-                  </button>
-                ))}
+              <div className="flex flex-col gap-3">
+                {analysisState &&
+                  selectedSegments.map((s) => (
+                    <SegmentCardExpandable
+                      key={s.id}
+                      projectId={projectId}
+                      analysis={analysisState}
+                      segment={s}
+                      onSaved={(next) => setAnalysisState(next)}
+                    />
+                  ))}
               </div>
             )}
           </CardContent>
@@ -643,18 +601,6 @@ export function ProjectConfigureTab({ projectId, project, initialSettings }: Pro
         </div>
       </div>
 
-      {analysisState && openSegmentId ? (
-        <SegmentDetailsDialog
-          key={openSegmentId}
-          projectId={projectId}
-          open={Boolean(openSegmentId)}
-          onOpenChange={(v) => setOpenSegmentId(v ? openSegmentId : null)}
-          analysis={analysisState}
-          segmentId={openSegmentId}
-          initialMode="edit"
-          onSaved={(next) => setAnalysisState(next)}
-        />
-      ) : null}
     </div>
   );
 }

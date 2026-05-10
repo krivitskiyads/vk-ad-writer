@@ -5,6 +5,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 
 import { callClaude } from "@/lib/ai/claude-client";
 import { buildAnalystSystemPrompt } from "@/lib/prompts/analyst";
+import { GENDER_OPTIONS, INCOME_OPTIONS } from "@/lib/segment-options";
 import {
   getKnowledgeMenu,
   getProject,
@@ -23,6 +24,9 @@ const ANALYZE_MODEL = "claude-sonnet-4-6";
 const JSON_UTF8 = {
   "Content-Type": "application/json; charset=utf-8",
 } as const;
+
+const GENDER_ENUM = GENDER_OPTIONS.map((o) => o.value);
+const INCOME_ENUM = INCOME_OPTIONS.map((o) => o.value);
 
 const ANALYSIS_TOOL: Anthropic.Messages.Tool = {
   name: "submit_analysis",
@@ -85,8 +89,14 @@ const ANALYSIS_TOOL: Anthropic.Messages.Tool = {
               properties: {
                 age_from: { type: "number" as const },
                 age_to: { type: "number" as const },
-                gender: { type: "string" as const },
-                income: { type: "string" as const },
+                gender: {
+                  type: "string" as const,
+                  enum: GENDER_ENUM as unknown as string[],
+                },
+                income: {
+                  type: "string" as const,
+                  enum: INCOME_ENUM as unknown as string[],
+                },
               },
             },
             pain_points: {
