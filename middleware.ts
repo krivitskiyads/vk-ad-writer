@@ -29,15 +29,26 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  const pathname = request.nextUrl.pathname;
+  const isPublicRoute =
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/signup") ||
+    pathname.startsWith("/forgot-password") ||
+    pathname.startsWith("/reset-password") ||
+    pathname.startsWith("/auth/callback");
+
   // Если не авторизован и не на странице логина — редиректим
-  if (!user && !request.nextUrl.pathname.startsWith("/login")) {
+  if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
   }
 
   // Если авторизован и на странице логина — редиректим на проекты
-  if (user && request.nextUrl.pathname.startsWith("/login")) {
+  if (
+    user &&
+    (pathname.startsWith("/login") || pathname.startsWith("/signup"))
+  ) {
     const url = request.nextUrl.clone();
     url.pathname = "/projects";
     return NextResponse.redirect(url);
