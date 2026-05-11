@@ -356,7 +356,9 @@ export function SegmentCardExpandable({
                     }
                   >
                     <SelectTrigger className="mt-1 w-full sm:max-w-md">
-                      <SelectValue />
+                      <SelectValue>
+                        {genderLabel(draft.demographics?.gender)}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {GENDER_OPTIONS.map((o) => (
@@ -386,7 +388,9 @@ export function SegmentCardExpandable({
                     }
                   >
                     <SelectTrigger className="mt-1 w-full sm:max-w-md">
-                      <SelectValue />
+                      <SelectValue>
+                        {incomeLabel(draft.demographics?.income)}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {INCOME_OPTIONS.map((o) => (

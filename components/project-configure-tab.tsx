@@ -25,6 +25,11 @@ import {
   PRODUCT_MODEL_OPTIONS,
   type ModelPresetId,
 } from "@/lib/model-options";
+import {
+  TRAFFIC_DESTINATION_OPTIONS,
+  normalizeTrafficDestination,
+  type TrafficDestination,
+} from "@/lib/traffic-options";
 import type { Project } from "@/lib/types/project";
 import type { AnalysisSegment, ProjectAnalysis } from "@/lib/types/project-analysis";
 import { toProjectAnalysis, withStableSegmentIds } from "@/lib/types/project-analysis";
@@ -42,12 +47,7 @@ type ApiSettings = {
 
 type ModelId = "fast" | "optimal" | "max";
 type LengthId = "micro" | "short" | "long" | "mixed";
-type TrafficDestinationId =
-  | "community"
-  | "website"
-  | "lead_magnet"
-  | "lead_form"
-  | "messages";
+type TrafficDestinationId = TrafficDestination;
 
 const SAVE_DEBOUNCE_MS = 600;
 const TECH_SAVE_DEBOUNCE_MS = 500;
@@ -58,30 +58,8 @@ const MODEL_BY_ID: Record<ModelId, string> = {
   max: "claude-opus-4-6",
 };
 
-const TRAFFIC_BY_ID: Record<TrafficDestinationId, string> = {
-  community: "community_subscribe",
-  website: "site",
-  lead_magnet: "quiz",
-  lead_form: "vk_lead",
-  messages: "community_messages",
-};
-
-const TRAFFIC_CHOICES: { id: TrafficDestinationId; label: string }[] = [
-  { id: "community", label: "Сообщество ВКонтакте" },
-  { id: "website", label: "Сайт или лендинг" },
-  { id: "lead_magnet", label: "Лид-магнит или квиз" },
-  { id: "lead_form", label: "Лид-форма ВКонтакте" },
-  { id: "messages", label: "Сообщения сообщества" },
-];
-
 function trafficIdFromString(v: string | null | undefined): TrafficDestinationId {
-  const x = (v ?? "").trim();
-  if (x === "community_subscribe") return "community";
-  if (x === "site") return "website";
-  if (x === "quiz") return "lead_magnet";
-  if (x === "vk_lead") return "lead_form";
-  if (x === "community_messages") return "messages";
-  return "website";
+  return normalizeTrafficDestination(v);
 }
 
 function modelIdFromString(model: string | null | undefined): ModelId {
@@ -225,7 +203,7 @@ export function ProjectConfigureTab({ projectId, project, initialSettings }: Pro
       const res = await fetch(`/api/projects/${projectId}/settings`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ trafficDestination: TRAFFIC_BY_ID[nextId] }),
+        body: JSON.stringify({ trafficDestination: nextId }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -381,13 +359,13 @@ export function ProjectConfigureTab({ projectId, project, initialSettings }: Pro
               }}
               className="grid gap-2"
             >
-              {TRAFFIC_CHOICES.map((opt) => (
+              {TRAFFIC_DESTINATION_OPTIONS.map((opt) => (
                 <label
-                  key={opt.id}
-                  className={radioRowClass(trafficId === opt.id)}
+                  key={opt.value}
+                  className={radioRowClass(trafficId === opt.value)}
                 >
                   <RadioGroupItem
-                    value={opt.id}
+                    value={opt.value}
                     className={radioItemClass()}
                   />
                   <span className="text-sm">{opt.label}</span>

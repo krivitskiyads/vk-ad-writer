@@ -24,13 +24,13 @@ export const MODEL_OPTIONS = [
 ] as const;
 
 export type TrafficDestination =
-  | "vk_lead"
-  | "senler"
+  | "vk_subscribe"
   | "community_messages"
-  | "community_subscribe"
   | "site"
-  | "marketplace"
   | "quiz"
+  | "vk_lead_form"
+  | "senler"
+  | "marketplace"
   | "avito";
 
 export type TextFormat = "micro" | "short" | "long" | "mixed";
@@ -47,13 +47,13 @@ export const TRAFFIC_OPTIONS: Array<{
   value: TrafficDestination;
   label: string;
 }> = [
-  { value: "vk_lead", label: "Лид-форма ВК" },
-  { value: "senler", label: "Чат-бот (Senler)" },
-  { value: "community_messages", label: "Сообщения сообщества" },
-  { value: "community_subscribe", label: "Подписка на сообщество" },
+  { value: "vk_subscribe", label: "Подписка на сообщество ВК" },
   { value: "site", label: "Сайт / лендинг" },
-  { value: "marketplace", label: "Маркетплейс (WB / Ozon)" },
   { value: "quiz", label: "Квиз" },
+  { value: "vk_lead_form", label: "Лид-форма ВК" },
+  { value: "community_messages", label: "Сообщения сообщества" },
+  { value: "senler", label: "Чат-бот (Senler)" },
+  { value: "marketplace", label: "Маркетплейс (WB / Ozon)" },
   { value: "avito", label: "Авито" },
 ];
 

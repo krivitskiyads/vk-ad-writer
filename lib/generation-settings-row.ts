@@ -2,8 +2,11 @@ import type {
   ClaudeModel,
   GenerationSettings,
   TextFormat,
-  TrafficDestination,
 } from "@/lib/generation-settings";
+import {
+  normalizeTrafficDestination,
+  type TrafficDestination,
+} from "@/lib/traffic-options";
 
 /** Читает строку generation_settings (snake или camel из PostgREST). */
 export function dbRowToGenerationSettings(
@@ -14,9 +17,12 @@ export function dbRowToGenerationSettings(
   const tf = (row.text_format ?? row.textFormat ?? "short") as string;
   const textFormat: TextFormat =
     tf === "micro" || tf === "long" || tf === "mixed" ? tf : "short";
-  const td = (row.traffic_destination ??
-    row.trafficDestination ??
-    "site") as TrafficDestination;
+  const td = normalizeTrafficDestination(
+    (row.traffic_destination ?? row.trafficDestination ?? "vk_subscribe") as
+      | string
+      | null
+      | undefined
+  ) as TrafficDestination;
   const tc = Number(row.text_count ?? row.textCount ?? 3);
   const textCount =
     Number.isFinite(tc) && tc > 0 ? Math.min(10, Math.max(1, Math.floor(tc))) : 3;
@@ -53,7 +59,7 @@ export function mergeGenerationSettings(
   patch: Partial<GenerationSettings>
 ): GenerationSettings {
   const base: GenerationSettings = previous ?? {
-    trafficDestination: "site",
+    trafficDestination: "vk_subscribe",
     textFormat: "short",
     textCount: 3,
     customWishes: "",

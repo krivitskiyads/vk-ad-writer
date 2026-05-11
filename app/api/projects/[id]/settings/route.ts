@@ -1,6 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import type { GenerationSettings } from "@/lib/generation-settings";
+import {
+  TRAFFIC_DESTINATION_OPTIONS,
+  normalizeTrafficDestination,
+} from "@/lib/traffic-options";
 import { getProjectSettings, upsertProjectSettings } from "@/lib/supabase/queries";
 import { createServerSupabase } from "@/lib/supabase/server";
 
@@ -19,6 +23,7 @@ const ALLOWED_LENGTH = new Set([
   "long",
   "mixed",
 ]);
+const ALLOWED_TRAFFIC = new Set(TRAFFIC_DESTINATION_OPTIONS.map((o) => o.value));
 
 function lengthFromTextFormat(
   textFormat: unknown
@@ -59,17 +64,18 @@ export async function GET(_request: NextRequest, context: RouteContext) {
         model: DEFAULTS.model,
         count: DEFAULTS.count,
         length: DEFAULTS.length,
-        traffic_destination: "site",
-        trafficDestination: "site",
+        traffic_destination: "vk_subscribe",
+        trafficDestination: "vk_subscribe",
       });
     }
+    const normalizedTraffic = normalizeTrafficDestination(settings.trafficDestination);
     return NextResponse.json({
       project_id: id,
       model: settings.model ?? DEFAULTS.model,
       count: settings.textCount ?? DEFAULTS.count,
       length: lengthFromTextFormat(settings.textFormat),
-      traffic_destination: settings.trafficDestination,
-      trafficDestination: settings.trafficDestination,
+      traffic_destination: normalizedTraffic,
+      trafficDestination: normalizedTraffic,
     });
   } catch (e) {
     console.error("[GET /api/projects/:id/settings]", e);
@@ -111,7 +117,23 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
     fields.textFormat = textFormatFromLength(len);
   }
-  if (b.trafficDestination !== undefined) fields.trafficDestination = b.trafficDestination;
+  if (b.trafficDestination !== undefined) {
+    const rawTraffic = b.trafficDestination;
+    if (typeof rawTraffic !== "string") {
+      return NextResponse.json(
+        { error: "Некорректное значение trafficDestination" },
+        { status: 400 }
+      );
+    }
+    const normalizedTraffic = normalizeTrafficDestination(rawTraffic);
+    if (!ALLOWED_TRAFFIC.has(normalizedTraffic)) {
+      return NextResponse.json(
+        { error: "Некорректное значение trafficDestination" },
+        { status: 400 }
+      );
+    }
+    fields.trafficDestination = normalizedTraffic;
+  }
   if (b.customWishes !== undefined) {
     fields.customWishes =
       typeof b.customWishes === "string" ? b.customWishes : "";
@@ -127,14 +149,18 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
               model: current.model ?? DEFAULTS.model,
               count: current.textCount ?? DEFAULTS.count,
               length: lengthFromTextFormat(current.textFormat),
-              traffic_destination: current.trafficDestination,
-              trafficDestination: current.trafficDestination,
+              traffic_destination: normalizeTrafficDestination(
+                current.trafficDestination
+              ),
+              trafficDestination: normalizeTrafficDestination(
+                current.trafficDestination
+              ),
             }
           : {
               project_id: id,
               ...DEFAULTS,
-              traffic_destination: "site",
-              trafficDestination: "site",
+              traffic_destination: "vk_subscribe",
+              trafficDestination: "vk_subscribe",
             }
       );
     } catch (e) {
@@ -156,8 +182,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       model: updated.model ?? DEFAULTS.model,
       count: updated.textCount ?? DEFAULTS.count,
       length: lengthFromTextFormat(updated.textFormat),
-      traffic_destination: updated.trafficDestination,
-      trafficDestination: updated.trafficDestination,
+      traffic_destination: normalizeTrafficDestination(updated.trafficDestination),
+      trafficDestination: normalizeTrafficDestination(updated.trafficDestination),
     });
   } catch (e) {
     console.error("[PATCH /api/projects/:id/settings]", e);
