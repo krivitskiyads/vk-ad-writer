@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import type Anthropic from "@anthropic-ai/sdk";
 
 import { callClaude } from "@/lib/ai/claude-client";
+import { resolveAnalysisModel } from "@/lib/analysis-model-options";
 import { buildAnalystSystemPrompt } from "@/lib/prompts/analyst";
 import { GENDER_OPTIONS, INCOME_OPTIONS } from "@/lib/segment-options";
 import {
@@ -18,8 +19,6 @@ import { type ProjectAnalysis, withStableSegmentIds } from "@/lib/types/project-
 import type { ProjectFile } from "@/lib/types/project-files";
 import type { SelectedTechniques } from "@/lib/types/knowledge-base";
 import { writeUsageLog } from "@/lib/usage-log";
-
-const ANALYZE_MODEL = "claude-sonnet-4-6";
 
 const JSON_UTF8 = {
   "Content-Type": "application/json; charset=utf-8",
@@ -238,10 +237,20 @@ function buildAnalystUserPrompt(
 }
 
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   const { id: projectId } = await context.params;
+  let body: unknown = {};
+  try {
+    body = await request.json();
+  } catch {
+    // body optional
+  }
+  const b = (body ?? {}) as Record<string, unknown>;
+  const analysisModelId =
+    typeof b.analysisModelId === "string" ? b.analysisModelId : "sonnet";
+  const analyzeModel = resolveAnalysisModel(analysisModelId);
 
   if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json(
@@ -307,7 +316,7 @@ export async function POST(
       temperature: 0.4,
       tool: ANALYSIS_TOOL,
       toolName: "submit_analysis",
-      model: ANALYZE_MODEL,
+      model: analyzeModel,
     });
     const time_ms = Math.round(performance.now() - start);
 
@@ -342,7 +351,7 @@ export async function POST(
         userId: user.id,
         projectId,
         operation: "analyze_project",
-        model: ANALYZE_MODEL,
+        model: analyzeModel,
         inputTokens: usage.input_tokens,
         outputTokens: usage.output_tokens,
         cacheReadTokens: usage.cache_read_tokens,
