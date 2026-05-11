@@ -11,8 +11,6 @@ import {
   getKnowledgeMenu,
   getProject,
   listProjectFiles,
-  setProjectAnalysis,
-  setProjectAnalysisStatus,
 } from "@/lib/supabase/queries";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { type ProjectAnalysis, withStableSegmentIds } from "@/lib/types/project-analysis";
@@ -298,7 +296,16 @@ export async function POST(
       );
     }
 
-    await setProjectAnalysisStatus(projectId, "analyzing");
+    {
+      const { error: analyzingErr } = await supabase
+        .from("projects")
+        .update({
+          analysis_status: "analyzing",
+          analysis_started_at: new Date().toISOString(),
+        })
+        .eq("id", projectId);
+      if (analyzingErr) throw analyzingErr;
+    }
     const systemPrompt = buildAnalystSystemPrompt(knowledgeMenu);
     const userPrompt = buildAnalystUserPrompt(project.description, files);
 
@@ -324,7 +331,13 @@ export async function POST(
     const techniques = pickSelectedTechniques(content);
 
     if (!analysisRaw) {
-      await setProjectAnalysisStatus(projectId, "failed");
+      await supabase
+        .from("projects")
+        .update({
+          analysis_status: "failed",
+          analysis_started_at: null,
+        })
+        .eq("id", projectId);
       return NextResponse.json(
         { error: "Аналитик вернул некорректный ответ" },
         { status: 502, headers: JSON_UTF8 }
@@ -340,11 +353,19 @@ export async function POST(
       reasoning: "",
     };
 
-    const updatedProject = await setProjectAnalysis(
-      projectId,
-      analysis,
-      safeTechniques
-    );
+    const { data: updatedProjectRow, error: updateErr } = await supabase
+      .from("projects")
+      .update({
+        analysis_status: "ready",
+        analysis,
+        selected_techniques: safeTechniques,
+        selected_segment_ids: [],
+        analysis_started_at: null,
+      })
+      .eq("id", projectId)
+      .select("*")
+      .single();
+    if (updateErr) throw updateErr;
 
     try {
       await writeUsageLog({
@@ -368,13 +389,19 @@ export async function POST(
     revalidatePath(`/projects/${projectId}`, "layout");
 
     return NextResponse.json(
-      { project: updatedProject },
+      { project: updatedProjectRow },
       { headers: JSON_UTF8 }
     );
   } catch (e) {
     console.error("[analyze]", e);
     try {
-      await setProjectAnalysisStatus(projectId, "failed");
+      await supabase
+        .from("projects")
+        .update({
+          analysis_status: "failed",
+          analysis_started_at: null,
+        })
+        .eq("id", projectId);
     } catch (statusErr) {
       console.error("[analyze] failed to mark status (non-fatal)", statusErr);
     }

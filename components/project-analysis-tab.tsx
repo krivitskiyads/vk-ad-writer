@@ -4,8 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Check, Loader2, RefreshCw, TriangleAlert } from "lucide-react";
-import { toast } from "sonner";
 
+import { AnalysisProgress } from "@/components/analysis-progress";
 import { BusinessSummaryCard } from "@/components/business-summary-card";
 import { SegmentCard } from "@/components/segment-card";
 import { SegmentDetailsDialog } from "@/components/segment-details-dialog";
@@ -36,14 +36,6 @@ type Props = {
   project: Project;
 };
 
-const POLL_MS = 8000;
-const ANALYZING_MESSAGES = [
-  "Изучаем материалы…",
-  "Формируем сегменты…",
-  "Подбираем техники…",
-  "Финализируем…",
-] as const;
-
 function safeAnalysis(raw: unknown): ProjectAnalysis | null {
   if (!raw) return null;
   const parsed = toProjectAnalysis(raw);
@@ -58,7 +50,7 @@ export function ProjectAnalysisTab({ projectId, project }: Props) {
   const [analysisState, setAnalysisState] = useState<ProjectAnalysis | null>(analysis);
   useEffect(() => setAnalysisState(analysis), [analysis]);
 
-  const segments = analysisState?.segments ?? [];
+  const segments = useMemo(() => analysisState?.segments ?? [], [analysisState]);
   const allSegmentIds = useMemo(
     () =>
       segments
@@ -134,22 +126,6 @@ export function ProjectAnalysisTab({ projectId, project }: Props) {
   };
 
   const status = project.analysis_status;
-
-  // Polling + rotating message during analyzing
-  const [msgIndex, setMsgIndex] = useState(0);
-  useEffect(() => {
-    if (status !== "analyzing") return;
-    const t1 = setInterval(() => {
-      router.refresh();
-    }, POLL_MS);
-    const t2 = setInterval(() => {
-      setMsgIndex((i) => (i + 1) % ANALYZING_MESSAGES.length);
-    }, POLL_MS);
-    return () => {
-      clearInterval(t1);
-      clearInterval(t2);
-    };
-  }, [status, router]);
 
   const [recheckOpen, setRecheckOpen] = useState(false);
   const [rechecking, setRechecking] = useState(false);
@@ -238,16 +214,12 @@ export function ProjectAnalysisTab({ projectId, project }: Props) {
   }
 
   if (status === "analyzing") {
+    const fallbackStartedAt = new Date().toISOString();
     return (
-      <div className="rounded-xl border border-border bg-card p-10 text-center">
-        <div className="mx-auto flex max-w-md flex-col items-center gap-3 text-muted-foreground">
-          <Loader2 className="size-7 animate-spin" aria-hidden />
-          <p className="text-sm">{ANALYZING_MESSAGES[msgIndex]}</p>
-          <p className="text-xs text-muted-foreground/80">
-            Страница обновляется автоматически
-          </p>
-        </div>
-      </div>
+      <AnalysisProgress
+        startedAt={project.analysisStartedAt ?? fallbackStartedAt}
+        model={undefined}
+      />
     );
   }
 

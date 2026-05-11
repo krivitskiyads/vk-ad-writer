@@ -11,20 +11,13 @@ import {
   generationSettingsToDbRow,
   mergeGenerationSettings,
 } from "@/lib/generation-settings-row";
-import {
-  type ProjectAnalysis,
-  toProjectAnalysis,
-  withStableSegmentIds,
-} from "@/lib/types/project-analysis";
+import { type ProjectAnalysis } from "@/lib/types/project-analysis";
 import type {
   Project,
   ProjectAnalysisStatus,
 } from "@/lib/types/project";
 import type { ProjectFile, ProjectFileKind } from "@/lib/types/project-files";
-import type {
-  GeneratedAdText,
-  GeneratedTextBatch,
-} from "@/lib/types/generated-texts";
+import type { GeneratedTextBatch } from "@/lib/types/generated-texts";
 import type { GenerationSettings } from "@/lib/generation-settings";
 import type { ProjectUsageSummary } from "@/lib/types/project-usage";
 
@@ -114,7 +107,15 @@ export async function getProject(projectId: string): Promise<Project | null> {
     .eq("id", projectId)
     .maybeSingle();
   if (error) throw error;
-  return (data as Project | null) ?? null;
+  if (!data) return null;
+  const row = data as Record<string, unknown>;
+  return {
+    ...(row as unknown as Project),
+    analysisStartedAt:
+      typeof row.analysis_started_at === "string" || row.analysis_started_at === null
+        ? (row.analysis_started_at as string | null)
+        : null,
+  };
 }
 
 export async function updateProject(
@@ -314,7 +315,7 @@ export async function listProjectTexts(
 export async function saveProjectBatch(
   projectId: string,
   data: {
-    texts: any[];
+    texts: unknown[];
     settings_snapshot: GenerationSettings;
     run_context: string | null;
     model: string;
