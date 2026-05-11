@@ -8,9 +8,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { useWorkspaceOptional } from "@/components/workspace-context";
 
 export function ProjectCreateForm() {
   const router = useRouter();
+  const workspace = useWorkspaceOptional();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [busy, setBusy] = useState(false);
@@ -21,6 +23,10 @@ export function ProjectCreateForm() {
       toast.error("Укажите имя проекта");
       return;
     }
+    if (!workspace) {
+      toast.error("Не выбран workspace");
+      return;
+    }
     setBusy(true);
     try {
       const createRes = await fetch("/api/projects", {
@@ -29,6 +35,7 @@ export function ProjectCreateForm() {
         body: JSON.stringify({
           name: trimmedName,
           description: description.trim() || undefined,
+          workspaceId: workspace.id,
         }),
       });
       if (!createRes.ok) {
@@ -40,7 +47,7 @@ export function ProjectCreateForm() {
       };
       const projectId = project.id;
       toast.success("Проект создан");
-      router.push(`/projects/${projectId}`);
+      router.push(`/w/${workspace.slug}/projects/${projectId}`);
     } catch (e) {
       const message = e instanceof Error ? e.message : "Что-то пошло не так";
       toast.error(message);

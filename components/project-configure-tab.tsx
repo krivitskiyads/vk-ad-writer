@@ -104,9 +104,15 @@ type Props = {
   projectId: string;
   project: Project;
   initialSettings: ApiSettings | null;
+  projectBasePath: string;
 };
 
-export function ProjectConfigureTab({ projectId, project, initialSettings }: Props) {
+export function ProjectConfigureTab({
+  projectId,
+  project,
+  initialSettings,
+  projectBasePath,
+}: Props) {
   const router = useRouter();
 
   const analysisNorm = useMemo(() => {
@@ -287,7 +293,7 @@ export function ProjectConfigureTab({ projectId, project, initialSettings }: Pro
           typeof data.error === "string" ? data.error : "Генерация не удалась"
         );
       }
-      router.push(`/projects/${projectId}/texts`);
+      router.push(`${projectBasePath}/texts`);
       router.refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Ошибка");
@@ -310,7 +316,7 @@ export function ProjectConfigureTab({ projectId, project, initialSettings }: Pro
               </CardDescription>
             </div>
             <Link
-              href={`/projects/${projectId}/analysis`}
+              href={`${projectBasePath}/analysis`}
               className={buttonVariants({ variant: "outline", size: "sm" })}
             >
               Изменить выбор
@@ -321,7 +327,7 @@ export function ProjectConfigureTab({ projectId, project, initialSettings }: Pro
               <div className="space-y-3 rounded-lg border border-dashed border-border bg-white/80 px-4 py-6 text-center">
                 <p className="text-muted-foreground text-sm">Нет выбранных сегментов</p>
                 <Link
-                  href={`/projects/${projectId}/analysis`}
+                  href={`${projectBasePath}/analysis`}
                   className={buttonVariants({ variant: "default", size: "sm" })}
                 >
                   Перейти к анализу

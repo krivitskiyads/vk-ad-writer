@@ -9,13 +9,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/client";
+import { safeInternalNextPath } from "@/lib/utils";
 
 type Props = {
   callbackError?: string;
   message?: string;
+  next?: string;
 };
 
-export function LoginForm({ callbackError, message }: Props) {
+export function LoginForm({ callbackError, message, next }: Props) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -39,9 +41,15 @@ export function LoginForm({ callbackError, message }: Props) {
       return;
     }
 
-    router.push("/projects");
+    const dest = safeInternalNextPath(next, "/projects");
+    router.push(dest);
     router.refresh();
   }
+
+  const afterAuth = safeInternalNextPath(next, "/projects");
+  const signupHref = next
+    ? `/signup?next=${encodeURIComponent(afterAuth)}`
+    : "/signup";
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-violet-50/50 px-4">
@@ -98,7 +106,7 @@ export function LoginForm({ callbackError, message }: Props) {
           <div className="mt-4 space-y-2 text-center text-sm">
             <div>
               Нет аккаунта?{" "}
-              <Link href="/signup" className="text-violet-700 hover:underline">
+              <Link href={signupHref} className="text-violet-700 hover:underline">
                 Зарегистрироваться
               </Link>
             </div>

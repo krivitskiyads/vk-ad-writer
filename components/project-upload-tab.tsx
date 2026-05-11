@@ -15,6 +15,12 @@ type Props = {
   project: Project;
   materials: ProjectFile[];
   successfulTexts: ProjectFile[];
+  /** По умолчанию легаси-путь `/projects/:id`. */
+  projectBasePath?: string;
+};
+
+type ContentProps = Omit<Props, "projectBasePath"> & {
+  projectBasePath: string;
 };
 
 export function ProjectUploadTab({
@@ -22,7 +28,9 @@ export function ProjectUploadTab({
   project,
   materials,
   successfulTexts,
+  projectBasePath: projectBasePathProp,
 }: Props) {
+  const projectBasePath = projectBasePathProp ?? `/projects/${projectId}`;
   return (
     <ProjectUploadTabContent
       key={projectId}
@@ -30,6 +38,7 @@ export function ProjectUploadTab({
       project={project}
       materials={materials}
       successfulTexts={successfulTexts}
+      projectBasePath={projectBasePath}
     />
   );
 }
@@ -39,7 +48,8 @@ function ProjectUploadTabContent({
   project,
   materials,
   successfulTexts,
-}: Props) {
+  projectBasePath,
+}: ContentProps) {
   const [description, setDescription] = useState(project.description ?? "");
   const [selectedAnalysisModel, setSelectedAnalysisModel] =
     useState<AnalysisModelId>("sonnet");
@@ -62,6 +72,7 @@ function ProjectUploadTabContent({
       <div className="pt-2">
         <UploadTabFooter
           projectId={projectId}
+          projectBasePath={projectBasePath}
           analysisStatus={project.analysis_status}
           materialsCount={materials.length}
           description={description}

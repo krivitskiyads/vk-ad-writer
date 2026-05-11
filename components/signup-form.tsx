@@ -9,14 +9,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/client";
+import { safeInternalNextPath } from "@/lib/utils";
 
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-export function SignupForm() {
+type SignupFormProps = {
+  initialEmail?: string;
+  next?: string;
+};
+
+export function SignupForm({ initialEmail, next }: SignupFormProps) {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(() => (initialEmail ?? "").trim());
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -42,11 +48,12 @@ export function SignupForm() {
 
     setLoading(true);
     const supabase = createClient();
+    const afterAuth = safeInternalNextPath(next, "/projects");
     const { data, error: authError } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback?next=/projects`,
+        emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(afterAuth)}`,
       },
     });
 
@@ -57,7 +64,7 @@ export function SignupForm() {
     }
 
     if (data.session) {
-      router.push("/projects");
+      router.push(afterAuth);
       router.refresh();
       return;
     }
@@ -73,6 +80,10 @@ export function SignupForm() {
     setError("Не удалось завершить регистрацию");
     setLoading(false);
   }
+
+  const loginHref = next
+    ? `/login?next=${encodeURIComponent(safeInternalNextPath(next, "/projects"))}`
+    : "/login";
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-violet-50/50 px-4">
@@ -135,7 +146,7 @@ export function SignupForm() {
 
           <div className="mt-4 text-center text-sm">
             Уже есть аккаунт?{" "}
-            <Link href="/login" className="text-violet-700 hover:underline">
+            <Link href={loginHref} className="text-violet-700 hover:underline">
               Войти
             </Link>
           </div>

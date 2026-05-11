@@ -388,6 +388,21 @@ export async function POST(
     revalidatePath(`/projects/${projectId}/analysis`);
     revalidatePath(`/projects/${projectId}`, "layout");
 
+    const wsId = (updatedProjectRow as { workspace_id?: string | null })
+      ?.workspace_id;
+    if (wsId) {
+      const { data: wsMeta } = await supabase
+        .from("workspaces")
+        .select("slug")
+        .eq("id", wsId)
+        .maybeSingle();
+      const slug = (wsMeta as { slug: string } | null)?.slug;
+      if (slug) {
+        revalidatePath(`/w/${slug}/projects/${projectId}/analysis`);
+        revalidatePath(`/w/${slug}/projects/${projectId}`, "layout");
+      }
+    }
+
     return NextResponse.json(
       { project: updatedProjectRow },
       { headers: JSON_UTF8 }

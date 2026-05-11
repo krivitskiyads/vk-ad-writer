@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 
 type Props = {
   projectId: string;
+  projectBasePath: string;
   analysisStatus: string;
   materialsCount: number;
   description?: string | null;
@@ -23,6 +24,7 @@ type Props = {
 
 export function UploadTabFooter({
   projectId,
+  projectBasePath,
   analysisStatus,
   materialsCount,
   description,
@@ -43,11 +45,11 @@ export function UploadTabFooter({
       body: JSON.stringify({ analysisModelId: selectedAnalysisModel }),
     }).catch((err) => console.error("[upload-footer] analyze failed", err));
     await new Promise((r) => setTimeout(r, 300));
-    window.location.href = `/projects/${projectId}/analysis`;
+    window.location.href = `${projectBasePath}/analysis`;
   };
 
   const goToAnalysis = () => {
-    router.push(`/projects/${projectId}/analysis`);
+    router.push(`${projectBasePath}/analysis`);
   };
 
   let label = "Дальше → Запустить анализ";

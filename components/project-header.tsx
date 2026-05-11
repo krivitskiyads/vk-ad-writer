@@ -33,6 +33,7 @@ type Props = {
     total_cost_rub: number;
     request_count: number;
   } | null;
+  workspaceProjectsHref: string;
 };
 
 export function ProjectHeader({
@@ -40,6 +41,7 @@ export function ProjectHeader({
   initialName,
   description,
   admin,
+  workspaceProjectsHref,
 }: Props) {
   const router = useRouter();
   const [name, setName] = useState(initialName);
@@ -116,7 +118,7 @@ export function ProjectHeader({
       }
       toast.success("Проект удалён");
       setDeleteOpen(false);
-      router.push("/projects");
+      router.push(workspaceProjectsHref);
       router.refresh();
     } catch (e) {
       const message = e instanceof Error ? e.message : "Ошибка удаления";
@@ -129,7 +131,7 @@ export function ProjectHeader({
     <div className="space-y-2">
       <nav className="flex items-center gap-1 text-sm text-muted-foreground">
         <Link
-          href="/projects"
+          href={workspaceProjectsHref}
           className="transition-colors hover:text-foreground"
         >
           Проекты

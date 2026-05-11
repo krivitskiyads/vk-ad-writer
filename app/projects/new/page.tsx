@@ -1,37 +1,18 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
 
-import { ProjectCreateForm } from "@/components/project-create-form";
 import { createServerSupabase } from "@/lib/supabase/server";
+import { getFirstOwnedWorkspaceSlug } from "@/lib/supabase/workspaces";
 
-export default async function NewProjectPage() {
+export default async function NewProjectRedirect() {
   const supabase = await createServerSupabase();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <Link
-            href="/projects"
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <ArrowLeft className="size-4" aria-hidden />К списку
-          </Link>
-          <h1 className="notion-page-title mt-2">Новый проект</h1>
-          <p className="notion-page-subtitle">
-            Создайте проект под клиента. Материалы и анализ добавите на следующем шаге.
-          </p>
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-border bg-card p-6">
-        <ProjectCreateForm />
-      </div>
-    </div>
-  );
+  const slug = await getFirstOwnedWorkspaceSlug(user.id);
+  if (slug) {
+    redirect(`/w/${slug}/projects/new`);
+  }
+  redirect("/login");
 }

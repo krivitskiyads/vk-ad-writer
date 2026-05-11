@@ -28,6 +28,7 @@ type Props = {
   project: Project;
   settings: GenerationSettings | null;
   batches: GeneratedTextBatch[];
+  workspaceProjectsHref: string;
 };
 
 function lengthLabel(tf: string | null | undefined): string {
@@ -53,7 +54,13 @@ const LOADING_MESSAGES: string[] = [
   "Финализируем…",
 ] as const;
 
-export function ProjectTextsTab({ projectId, project, settings, batches }: Props) {
+export function ProjectTextsTab({
+  projectId,
+  project,
+  settings,
+  batches,
+  workspaceProjectsHref,
+}: Props) {
   const router = useRouter();
   const [runContext, setRunContext] = useState("");
   const [loading, setLoading] = useState(false);
@@ -261,7 +268,7 @@ export function ProjectTextsTab({ projectId, project, settings, batches }: Props
 
           <div className="flex justify-end pt-6 border-t mt-8">
             <Link
-              href="/projects"
+              href={workspaceProjectsHref}
               className={cn(buttonVariants({ variant: "outline", size: "default" }))}
             >
               Готово → К списку проектов

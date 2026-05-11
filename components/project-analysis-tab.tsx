@@ -34,6 +34,7 @@ import { cn } from "@/lib/utils";
 type Props = {
   projectId: string;
   project: Project;
+  projectBasePath: string;
 };
 
 function safeAnalysis(raw: unknown): ProjectAnalysis | null {
@@ -43,7 +44,7 @@ function safeAnalysis(raw: unknown): ProjectAnalysis | null {
   return withStableSegmentIds(parsed);
 }
 
-export function ProjectAnalysisTab({ projectId, project }: Props) {
+export function ProjectAnalysisTab({ projectId, project, projectBasePath }: Props) {
   const router = useRouter();
 
   const analysis = useMemo(() => safeAnalysis(project.analysis), [project.analysis]);
@@ -155,7 +156,7 @@ export function ProjectAnalysisTab({ projectId, project }: Props) {
       const ok = await persist(selectedIds);
       if (!ok) return;
     }
-    router.push(`/projects/${projectId}/configure`);
+    router.push(`${projectBasePath}/configure`);
   };
 
   const footer = (
@@ -202,7 +203,7 @@ export function ProjectAnalysisTab({ projectId, project }: Props) {
           </CardHeader>
           <CardContent>
             <Link
-              href={`/projects/${projectId}/upload`}
+              href={`${projectBasePath}/upload`}
               className={buttonVariants({ variant: "outline", size: "default" })}
             >
               ← К загрузке
@@ -253,7 +254,7 @@ export function ProjectAnalysisTab({ projectId, project }: Props) {
             Попробовать снова
           </Button>
           <Link
-            href={`/projects/${projectId}/upload`}
+            href={`${projectBasePath}/upload`}
             className={buttonVariants({ variant: "secondary", size: "default" })}
           >
             ← К загрузке

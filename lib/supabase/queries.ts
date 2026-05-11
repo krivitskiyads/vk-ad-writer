@@ -28,23 +28,32 @@ const sb = () => createServerSupabase();
 // ============================================================================
 
 export async function listProjects(
-  userId: string
+  workspaceId: string
 ): Promise<ProjectUsageSummary[]> {
   const supabase = await sb();
-  const [{ data: projectRows, error: projectsError }, { data: usageRows, error: usageError }] =
-    await Promise.all([
-      supabase
-        .from("projects")
-        .select("id, user_id, name, description, updated_at")
-        .eq("user_id", userId)
-        .order("updated_at", { ascending: false }),
-      supabase.from("project_usage_summary").select("*").eq("user_id", userId),
-    ]);
+  const { data: projectRows, error: projectsError } = await supabase
+    .from("projects")
+    .select("id, user_id, name, description, updated_at")
+    .eq("workspace_id", workspaceId)
+    .order("updated_at", { ascending: false });
   if (projectsError) throw projectsError;
-  if (usageError) throw usageError;
+
+  const ids = (projectRows ?? [])
+    .map((r) => (r as { id: string }).id)
+    .filter((x): x is string => typeof x === "string");
+
+  let usageRows: ProjectUsageSummary[] = [];
+  if (ids.length > 0) {
+    const { data: usageData, error: usageError } = await supabase
+      .from("project_usage_summary")
+      .select("*")
+      .in("project_id", ids);
+    if (usageError) throw usageError;
+    usageRows = (usageData ?? []) as ProjectUsageSummary[];
+  }
 
   const usageByProjectId = new Map(
-    (usageRows ?? []).map((row) => [(row as ProjectUsageSummary).project_id, row as ProjectUsageSummary])
+    usageRows.map((row) => [row.project_id, row])
   );
 
   const merged = (projectRows ?? []).map((row) => {
@@ -80,6 +89,7 @@ export async function listProjects(
 
 export async function createProject(
   userId: string,
+  workspaceId: string,
   data: { name: string; description?: string }
 ): Promise<Project> {
   const supabase = await sb();
@@ -87,6 +97,7 @@ export async function createProject(
     .from("projects")
     .insert({
       user_id: userId,
+      workspace_id: workspaceId,
       name: data.name,
       description: data.description ?? null,
       analysis: null,
@@ -111,6 +122,8 @@ export async function getProject(projectId: string): Promise<Project | null> {
   const row = data as Record<string, unknown>;
   return {
     ...(row as unknown as Project),
+    workspace_id:
+      typeof row.workspace_id === "string" ? row.workspace_id : null,
     analysisStartedAt:
       typeof row.analysis_started_at === "string" || row.analysis_started_at === null
         ? (row.analysis_started_at as string | null)
@@ -366,13 +379,13 @@ export async function getProjectBatchCount(projectId: string): Promise<number> {
 }
 
 export async function getProjectsBatchCounts(
-  userId: string
+  workspaceId: string
 ): Promise<Record<string, number>> {
   const supabase = await sb();
   const { data: projects, error: pErr } = await supabase
     .from("projects")
     .select("id")
-    .eq("user_id", userId);
+    .eq("workspace_id", workspaceId);
   if (pErr) throw pErr;
 
   const ids = (projects ?? [])
@@ -441,6 +454,19 @@ export async function getFullKnowledgeBase(): Promise<KnowledgeBaseEntry[]> {
 // ============================================================================
 // Сводка расходов по проектам
 // ============================================================================
+
+export async function getProjectUsageSummaryByProjectId(
+  projectId: string
+): Promise<ProjectUsageSummary | null> {
+  const supabase = await sb();
+  const { data, error } = await supabase
+    .from("project_usage_summary")
+    .select("*")
+    .eq("project_id", projectId)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as ProjectUsageSummary | null) ?? null;
+}
 
 export async function getProjectsWithUsage(
   userId: string

@@ -1,0 +1,48 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
+
+import { ProjectCreateForm } from "@/components/project-create-form";
+import { getWorkspaceBySlug } from "@/lib/supabase/workspaces";
+import { createServerSupabase } from "@/lib/supabase/server";
+
+export default async function WorkspaceNewProjectPage({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = await params;
+  const supabase = await createServerSupabase();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const workspace = await getWorkspaceBySlug(slug);
+  if (!workspace) redirect("/projects");
+
+  const workspaceProjectsHref = `/w/${workspace.slug}/projects`;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <Link
+            href={workspaceProjectsHref}
+            className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ArrowLeft className="size-4" aria-hidden />К списку
+          </Link>
+          <h1 className="notion-page-title mt-2">Новый проект</h1>
+          <p className="notion-page-subtitle">
+            Создайте проект под клиента. Материалы и анализ добавите на следующем шаге.
+          </p>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-card p-6">
+        <ProjectCreateForm />
+      </div>
+    </div>
+  );
+}

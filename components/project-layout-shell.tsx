@@ -12,6 +12,8 @@ type Props = {
   isAdmin: boolean;
   adminUsage: { total_cost_rub: number; request_count: number } | null;
   children: ReactNode;
+  workspaceProjectsHref: string;
+  projectBasePath: string;
 };
 
 export function ProjectLayoutShell({
@@ -20,6 +22,8 @@ export function ProjectLayoutShell({
   isAdmin,
   adminUsage,
   children,
+  workspaceProjectsHref,
+  projectBasePath,
 }: Props) {
   return (
     <div className="space-y-6">
@@ -28,9 +32,14 @@ export function ProjectLayoutShell({
         initialName={project.name}
         description={project.description}
         admin={isAdmin ? adminUsage : null}
+        workspaceProjectsHref={workspaceProjectsHref}
       />
 
-      <ProjectTabs project={project} filesCount={filesCount} />
+      <ProjectTabs
+        project={project}
+        filesCount={filesCount}
+        projectBasePath={projectBasePath}
+      />
 
       <div>{children}</div>
     </div>

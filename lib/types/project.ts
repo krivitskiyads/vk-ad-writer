@@ -6,6 +6,8 @@ export type ProjectAnalysisStatus = "pending" | "analyzing" | "ready" | "failed"
 export type Project = {
   id: string;
   user_id: string;
+  /** Рабочее пространство; после R13a у существующих проектов заполнено. */
+  workspace_id: string | null;
   name: string;
   description: string | null;
   analysis: ProjectAnalysis | null;

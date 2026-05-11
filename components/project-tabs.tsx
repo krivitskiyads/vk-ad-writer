@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 type Props = {
   project: Project;
   filesCount: number;
+  projectBasePath: string;
 };
 
 type Tab = {
@@ -23,9 +24,9 @@ type Tab = {
   tooltip?: string;
 };
 
-export function ProjectTabs({ project, filesCount }: Props) {
+export function ProjectTabs({ project, filesCount, projectBasePath }: Props) {
   const pathname = usePathname();
-  const base = `/projects/${project.id}`;
+  const base = projectBasePath;
 
   const tabs: Tab[] = [
     {

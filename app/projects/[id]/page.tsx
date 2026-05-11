@@ -1,10 +1,10 @@
-import { redirect } from "next/navigation";
+import { redirectLegacyProjectSubpath } from "@/lib/server/legacy-project-redirect";
 
-export default async function ProjectRootPage({
+export default async function ProjectRootRedirect({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  redirect(`/projects/${id}/upload`);
+  await redirectLegacyProjectSubpath(id, "upload");
 }

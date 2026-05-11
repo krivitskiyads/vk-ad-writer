@@ -30,12 +30,14 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const pathname = request.nextUrl.pathname;
+  // Защищённые области приложения (в т.ч. /w/... — проверка членства в layout, RLS в БД).
   const isPublicRoute =
     pathname.startsWith("/login") ||
     pathname.startsWith("/signup") ||
     pathname.startsWith("/forgot-password") ||
     pathname.startsWith("/reset-password") ||
-    pathname.startsWith("/auth/callback");
+    pathname.startsWith("/auth/callback") ||
+    pathname.startsWith("/invitations");
 
   // Если не авторизован и не на странице логина — редиректим
   if (!user && !isPublicRoute) {

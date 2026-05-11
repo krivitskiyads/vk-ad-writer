@@ -1,29 +1,10 @@
-import { notFound } from "next/navigation";
+import { redirectLegacyProjectSubpath } from "@/lib/server/legacy-project-redirect";
 
-import { ProjectUploadTab } from "@/components/project-upload-tab";
-import { getProject, listProjectFiles } from "@/lib/supabase/queries";
-
-export default async function ProjectUploadPage({
+export default async function ProjectUploadRedirect({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [project, materials, successfulTexts] = await Promise.all([
-    getProject(id),
-    listProjectFiles(id, "material"),
-    listProjectFiles(id, "successful_text"),
-  ]);
-
-  if (!project) notFound();
-
-  return (
-    <ProjectUploadTab
-      projectId={id}
-      project={project}
-      materials={materials}
-      successfulTexts={successfulTexts}
-    />
-  );
+  await redirectLegacyProjectSubpath(id, "upload");
 }
-

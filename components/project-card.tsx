@@ -38,6 +38,8 @@ type Props = {
   project: ProjectCardProject;
   isAdmin: boolean;
   batchesCount: number;
+  /** Корень проекта (вкладка загрузки). По умолчанию `/projects/:id`. */
+  projectHref?: string;
 };
 
 function formatRelativeRu(iso: string | null): string {
@@ -70,7 +72,14 @@ function pluralGenerations(n: number): string {
   return `${n} генераций`;
 }
 
-export function ProjectCard({ project, isAdmin, batchesCount }: Props) {
+export function ProjectCard({
+  project,
+  isAdmin,
+  batchesCount,
+  projectHref: projectHrefProp,
+}: Props) {
+  const projectHref =
+    projectHrefProp ?? `/projects/${project.project_id}`;
   const router = useRouter();
   const [name, setName] = useState(project.name);
   const [editing, setEditing] = useState(false);
@@ -177,7 +186,7 @@ export function ProjectCard({ project, isAdmin, batchesCount }: Props) {
   return (
     <>
     <Link
-      href={editing ? "#" : `/projects/${project.project_id}`}
+      href={editing ? "#" : projectHref}
       onClick={(e) => {
         if (editing) e.preventDefault();
       }}
