@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Menu } from "@base-ui/react/menu";
-import { Check, ChevronDown, Plus } from "lucide-react";
+import { Check, ChevronDown, Loader2, Plus } from "lucide-react";
 
 import { CreateWorkspaceDialog } from "@/components/create-workspace-dialog";
+import { useWorkspaceOptional } from "@/components/workspace-context";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
@@ -18,19 +19,23 @@ type WsRow = {
 export function WorkspaceSwitcher() {
   const pathname = usePathname();
   const router = useRouter();
+  const currentWorkspace = useWorkspaceOptional();
   const [workspaces, setWorkspaces] = useState<WsRow[]>([]);
+  const [listLoading, setListLoading] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
 
   const activeSlug =
     pathname.startsWith("/w/") ? pathname.split("/")[2] ?? null : null;
 
   const loadWorkspaces = useCallback(async () => {
+    setListLoading(true);
     const supabase = createClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) {
       setWorkspaces([]);
+      setListLoading(false);
       return;
     }
     const { data, error } = await supabase
@@ -41,28 +46,21 @@ export function WorkspaceSwitcher() {
     if (error) {
       console.error("[workspace-switcher]", error);
       setWorkspaces([]);
+      setListLoading(false);
       return;
     }
     const rows = (data ?? []) as unknown as {
       workspaces: { id: string; name: string; slug: string };
     }[];
     setWorkspaces(rows.map((r) => r.workspaces));
+    setListLoading(false);
   }, []);
 
-  useEffect(() => {
-    void loadWorkspaces();
-  }, [loadWorkspaces]);
-
-  const currentWorkspace =
-    activeSlug == null
-      ? undefined
-      : workspaces.find((w) => w.slug === activeSlug);
-
-  if (!activeSlug) {
+  if (!activeSlug || !currentWorkspace) {
     return null;
   }
 
-  const triggerLabel = currentWorkspace?.name?.trim() || "…";
+  const triggerLabel = currentWorkspace.name.trim();
 
   return (
     <>
@@ -90,26 +88,35 @@ export function WorkspaceSwitcher() {
                 )}
               >
                 <Menu.Viewport className="max-h-64 overflow-y-auto">
-                  {workspaces.map((w) => (
-                    <Menu.Item
-                      key={w.id}
-                      onClick={() => {
-                        if (w.slug !== activeSlug) {
-                          router.push(`/w/${w.slug}/projects`);
-                        }
-                      }}
-                      className={cn(
-                        "flex cursor-pointer items-center gap-2 px-3 py-2 text-sm outline-none data-highlighted:bg-violet-50"
-                      )}
-                    >
-                      {w.slug === activeSlug ? (
-                        <Check className="size-4 shrink-0 text-violet-600" aria-hidden />
-                      ) : (
-                        <span className="size-4 shrink-0" aria-hidden />
-                      )}
-                      <span className="truncate">{w.name}</span>
-                    </Menu.Item>
-                  ))}
+                  {listLoading && workspaces.length === 0 ? (
+                    <div className="flex justify-center py-6">
+                      <Loader2
+                        className="size-6 animate-spin text-muted-foreground"
+                        aria-hidden
+                      />
+                    </div>
+                  ) : (
+                    workspaces.map((w) => (
+                      <Menu.Item
+                        key={w.id}
+                        onClick={() => {
+                          if (w.slug !== activeSlug) {
+                            router.push(`/w/${w.slug}/projects`);
+                          }
+                        }}
+                        className={cn(
+                          "flex cursor-pointer items-center gap-2 px-3 py-2 text-sm outline-none data-highlighted:bg-violet-50"
+                        )}
+                      >
+                        {w.slug === activeSlug ? (
+                          <Check className="size-4 shrink-0 text-violet-600" aria-hidden />
+                        ) : (
+                          <span className="size-4 shrink-0" aria-hidden />
+                        )}
+                        <span className="truncate">{w.name}</span>
+                      </Menu.Item>
+                    ))
+                  )}
                   <Menu.Separator className="my-1 h-px bg-border" />
                   <Menu.Item
                     onClick={() => setCreateOpen(true)}

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
+import { AppShell } from "@/components/app-shell";
 import { WorkspaceProvider } from "@/components/workspace-context";
 import { createServerSupabase } from "@/lib/supabase/server";
 import type { Workspace } from "@/lib/types/workspace";
@@ -48,6 +49,8 @@ export default async function WorkspaceLayout({
   };
 
   return (
-    <WorkspaceProvider workspace={workspace}>{children}</WorkspaceProvider>
+    <WorkspaceProvider workspace={workspace}>
+      <AppShell>{children}</AppShell>
+    </WorkspaceProvider>
   );
 }
