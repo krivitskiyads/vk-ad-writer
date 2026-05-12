@@ -6,6 +6,7 @@ import { Copy, Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { BatchCard } from "@/components/batch-card";
+import { ProjectUsageWidget } from "@/components/project-usage-widget";
 import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button";
 import {
@@ -276,6 +277,8 @@ export function ProjectTextsTab({
           </div>
         </div>
       )}
+
+      <ProjectUsageWidget projectId={projectId} />
     </div>
   );
 }

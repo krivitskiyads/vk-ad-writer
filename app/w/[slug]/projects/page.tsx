@@ -88,6 +88,8 @@ export default async function WorkspaceProjectsPage({
               isAdmin={isAdmin}
               batchesCount={batchCounts[p.project_id] ?? 0}
               projectHref={`${workspaceProjectsHref}/${p.project_id}`}
+              currentWorkspaceId={workspace.id}
+              isWorkspaceOwner={user.id === workspace.ownerId}
             />
           ))}
         </div>

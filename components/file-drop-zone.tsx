@@ -23,6 +23,8 @@ export type ParsedFile = {
   content: string;
   file_type: string | null;
   size_bytes: number;
+  /** Заполняется для PDF при загрузке через endpoint проекта. */
+  pdfExtractionMethod?: "pdf-parse" | "vision";
 };
 
 type FileDropZoneProps = {
@@ -34,6 +36,8 @@ type FileDropZoneProps = {
   multiple?: boolean;
   /** Подпись CTA в диалоге вставки текста (default: "Добавить материал"). */
   pasteSubmitLabel?: string;
+  /** Нужен для гибридного извлечения текста из PDF на сервере. */
+  projectId?: string;
 };
 
 const SUPPORTED_EXTS = ["pdf", "docx", "txt", "csv", "md"] as const;
@@ -43,23 +47,33 @@ function getExt(name: string): string {
   return dot >= 0 ? name.slice(dot + 1).toLowerCase() : "";
 }
 
-async function parseFile(file: File): Promise<ParsedFile> {
+async function parseFile(
+  file: File,
+  projectId?: string
+): Promise<ParsedFile> {
   const ext = getExt(file.name);
 
   if (ext === "pdf") {
     const fd = new FormData();
     fd.append("file", file);
-    const res = await fetch("/api/extract-pdf", { method: "POST", body: fd });
+    const url = projectId
+      ? `/api/projects/${projectId}/extract-pdf`
+      : "/api/extract-pdf";
+    const res = await fetch(url, { method: "POST", body: fd });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.error ?? `PDF: ошибка ${res.status}`);
     }
-    const data = (await res.json()) as { text?: string };
+    const data = (await res.json()) as {
+      text?: string;
+      method?: "pdf-parse" | "vision";
+    };
     return {
       name: file.name,
       content: (data.text ?? "").trim(),
       file_type: "pdf",
       size_bytes: file.size,
+      pdfExtractionMethod: data.method,
     };
   }
 
@@ -96,9 +110,11 @@ export function FileDropZone({
   hint,
   multiple = true,
   pasteSubmitLabel = "Добавить материал",
+  projectId,
 }: FileDropZoneProps) {
   const [dragActive, setDragActive] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [busyLabel, setBusyLabel] = useState("Читаем файлы…");
   const [pasteOpen, setPasteOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -106,28 +122,47 @@ export function FileDropZone({
     async (fileList: FileList | File[]) => {
       const files = Array.from(fileList);
       if (files.length === 0) return;
+
+      const hasPdf = files.some((f) => getExt(f.name) === "pdf");
       setBusy(true);
+      let aiHintTimer: ReturnType<typeof setTimeout> | undefined;
+      if (hasPdf) {
+        setBusyLabel("Извлекаем текст из PDF…");
+        aiHintTimer = setTimeout(() => {
+          setBusyLabel("Распознаём текст с помощью AI…");
+        }, 4000);
+      } else {
+        setBusyLabel("Читаем файлы…");
+      }
+
       const parsed: ParsedFile[] = [];
-      for (const file of files) {
-        try {
-          const result = await parseFile(file);
-          parsed.push(result);
-        } catch (e) {
-          const message = e instanceof Error ? e.message : "Не удалось обработать файл";
-          toast.error(message);
+      try {
+        for (const file of files) {
+          try {
+            const result = await parseFile(file, projectId);
+            parsed.push(result);
+          } catch (e) {
+            const message =
+              e instanceof Error ? e.message : "Не удалось обработать файл";
+            toast.error(message);
+          }
         }
-      }
-      if (parsed.length > 0) {
-        try {
-          await onFilesParsed(parsed);
-        } catch (e) {
-          const message = e instanceof Error ? e.message : "Не удалось добавить файлы";
-          toast.error(message);
+        if (parsed.length > 0) {
+          try {
+            await onFilesParsed(parsed);
+          } catch (e) {
+            const message =
+              e instanceof Error ? e.message : "Не удалось добавить файлы";
+            toast.error(message);
+          }
         }
+      } finally {
+        if (aiHintTimer) clearTimeout(aiHintTimer);
+        setBusyLabel("Читаем файлы…");
+        setBusy(false);
       }
-      setBusy(false);
     },
-    [onFilesParsed]
+    [onFilesParsed, projectId]
   );
 
   const onDragOver: React.DragEventHandler<HTMLDivElement> = (e) => {
@@ -212,7 +247,7 @@ export function FileDropZone({
         {busy ? (
           <div className="flex flex-col items-center gap-2 py-2 text-muted-foreground">
             <Loader2 className="size-6 animate-spin" aria-hidden />
-            <span className="text-sm">Читаем файлы…</span>
+            <span className="text-sm">{busyLabel}</span>
           </div>
         ) : (
           <div className="flex flex-col items-center gap-2 py-2">

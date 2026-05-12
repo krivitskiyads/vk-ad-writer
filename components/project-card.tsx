@@ -7,6 +7,7 @@ import {
   Briefcase,
   Check,
   Loader2,
+  MoveRight,
   Pencil,
   Trash2,
   X,
@@ -23,6 +24,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { MoveProjectDialog } from "@/components/move-project-dialog";
 import { cn } from "@/lib/utils";
 
 type ProjectCardProject = {
@@ -40,6 +42,10 @@ type Props = {
   batchesCount: number;
   /** Корень проекта (вкладка загрузки). По умолчанию `/projects/:id`. */
   projectHref?: string;
+  /** Для переноса между workspace (только в контексте /w/.../projects). */
+  currentWorkspaceId?: string;
+  /** Owner текущего workspace — может переносить проекты. */
+  isWorkspaceOwner?: boolean;
 };
 
 function formatRelativeRu(iso: string | null): string {
@@ -77,6 +83,8 @@ export function ProjectCard({
   isAdmin,
   batchesCount,
   projectHref: projectHrefProp,
+  currentWorkspaceId,
+  isWorkspaceOwner = false,
 }: Props) {
   const projectHref =
     projectHrefProp ?? `/projects/${project.project_id}`;
@@ -87,7 +95,9 @@ export function ProjectCard({
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [moveOpen, setMoveOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const canMove = Boolean(currentWorkspaceId) && isWorkspaceOwner;
 
   useEffect(() => {
     if (editing) {
@@ -207,6 +217,20 @@ export function ProjectCard({
           >
             <Pencil className="size-3.5" aria-hidden />
           </button>
+          {canMove && currentWorkspaceId ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setMoveOpen(true);
+              }}
+              aria-label="Перенести в другой workspace"
+              className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <MoveRight className="size-3.5" aria-hidden />
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={(e) => {
@@ -305,6 +329,15 @@ export function ProjectCard({
         </div>
       )}
     </Link>
+
+      {currentWorkspaceId ? (
+        <MoveProjectDialog
+          open={moveOpen}
+          onOpenChange={setMoveOpen}
+          projectId={project.project_id}
+          currentWorkspaceId={currentWorkspaceId}
+        />
+      ) : null}
 
       <Dialog
         open={deleteOpen}

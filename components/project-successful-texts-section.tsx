@@ -34,6 +34,7 @@ export function ProjectSuccessfulTextsSection({
 
   const uploadParsed = async (parsed: ParsedFile[]) => {
     const created: ProjectFile[] = [];
+    let hadVisionPdf = false;
     for (const f of parsed) {
       try {
         const res = await fetch(`/api/projects/${projectId}/files`, {
@@ -54,6 +55,9 @@ export function ProjectSuccessfulTextsSection({
         }
         const { file } = (await res.json()) as { file: ProjectFile };
         created.push(file);
+        if (f.file_type === "pdf" && f.pdfExtractionMethod === "vision") {
+          hadVisionPdf = true;
+        }
       } catch (e) {
         const message = e instanceof Error ? e.message : "Ошибка загрузки";
         toast.error(`«${f.name}»: ${message}`);
@@ -61,7 +65,26 @@ export function ProjectSuccessfulTextsSection({
     }
     if (created.length > 0) {
       setTexts((prev) => [...prev, ...created]);
-      toast.success(`Добавлено: ${created.length}`);
+      const sole = created.length === 1 ? created[0] : null;
+      const soleParsed = sole
+        ? parsed.find((p) => p.name === sole.name)
+        : undefined;
+      const singlePdfParse =
+        soleParsed?.file_type === "pdf" &&
+        soleParsed.pdfExtractionMethod === "pdf-parse";
+
+      if (hadVisionPdf) {
+        toast.success("AI распознал текст из PDF", {
+          className:
+            "bg-emerald-50 text-emerald-950 border border-emerald-200 [&_[data-description]]:text-emerald-800",
+          description:
+            created.length > 1 ? `Всего добавлено файлов: ${created.length}` : undefined,
+        });
+      } else if (created.length === 1 && singlePdfParse) {
+        toast.success("PDF загружен");
+      } else {
+        toast.success(`Добавлено: ${created.length}`);
+      }
       router.refresh();
     }
   };
@@ -121,6 +144,7 @@ export function ProjectSuccessfulTextsSection({
         )}
 
         <FileDropZone
+          projectId={projectId}
           onFilesParsed={uploadParsed}
           hint="Перетащите файлы или вставьте текст с удачным постом, объявлением, креативом"
           pasteSubmitLabel="Добавить удачный текст"

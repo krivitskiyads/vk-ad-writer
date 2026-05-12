@@ -9,11 +9,9 @@ import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
-const settingsNav = {
-  href: "/settings",
-  label: "Настройки",
-  icon: Settings2,
-} as const;
+function settingsHref(workspaceSlug: string | null): string {
+  return workspaceSlug ? `/w/${workspaceSlug}/settings` : "/settings";
+}
 
 export function AppSidebar() {
   const pathname = usePathname();
@@ -90,8 +88,12 @@ export function AppSidebar() {
           );
         })()}
         {(() => {
-          const { href, label, icon: Icon } = settingsNav;
-          const active = pathname.startsWith("/settings");
+          const href = settingsHref(workspaceSlug);
+          const Icon = Settings2;
+          const label = "Настройки";
+          const active = workspaceSlug
+            ? pathname.startsWith(`/w/${workspaceSlug}/settings`)
+            : pathname.startsWith("/settings");
           return (
             <Link
               key={href}

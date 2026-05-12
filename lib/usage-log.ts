@@ -7,7 +7,8 @@ import { createServerSupabase } from "@/lib/supabase/server";
 export type UsageOperation =
   | "analyze_project"
   | "generate"
-  | "regenerate";
+  | "regenerate"
+  | "ocr_pdf";
 
 export type WriteUsageLogParams = {
   userId: string;

@@ -17,11 +17,18 @@ export type ProjectFileTextResult =
   | { ok: false; reason: "skipped" }
   | { ok: false; reason: "error"; message: string };
 
-async function extractTextFromPdf(file: File): Promise<string> {
+async function extractTextFromPdf(
+  file: File,
+  projectId?: string
+): Promise<string> {
   const formData = new FormData();
   formData.append("file", file);
 
-  const res = await fetch("/api/extract-pdf", {
+  const url = projectId
+    ? `/api/projects/${projectId}/extract-pdf`
+    : "/api/extract-pdf";
+
+  const res = await fetch(url, {
     method: "POST",
     body: formData,
   });
@@ -32,12 +39,13 @@ async function extractTextFromPdf(file: File): Promise<string> {
     throw new Error(msg);
   }
 
-  const data = await res.json();
+  const data = (await res.json()) as { text?: string };
   return data.text ?? "";
 }
 
 export async function extractTextFromProjectFile(
-  file: File
+  file: File,
+  projectId?: string
 ): Promise<ProjectFileTextResult> {
   const ext = getFileExtension(file.name);
 
@@ -58,7 +66,7 @@ export async function extractTextFromProjectFile(
     }
 
     if (ext === ".pdf") {
-      const content = await extractTextFromPdf(file);
+      const content = await extractTextFromPdf(file, projectId);
       if (!content) {
         return { ok: false, reason: "error", message: "PDF не содержит текста (возможно, это скан)" };
       }
