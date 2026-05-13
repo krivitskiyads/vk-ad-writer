@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 
-const MAX_TOKENS = 4096;
+const DEFAULT_MAX_TOKENS = 4096;
 
 export type CallClaudeUsage = {
   input_tokens: number;
@@ -14,6 +14,8 @@ export type CallClaudeResult = {
   tokensUsed: number;
   timeMs: number;
   usage: CallClaudeUsage;
+  // "end_turn" | "max_tokens" | "stop_sequence" | "tool_use" | "pause_turn" | "refusal" | null
+  stopReason: string | null;
 };
 
 function getAnthropicClient(): Anthropic {
@@ -38,6 +40,7 @@ export async function callClaude({
   tool,
   toolName,
   model = "claude-sonnet-4-6",
+  maxTokens = DEFAULT_MAX_TOKENS,
 }: {
   systemPrompt: string;
   userPrompt: string;
@@ -45,6 +48,7 @@ export async function callClaude({
   tool?: Anthropic.Messages.Tool;
   toolName?: string;
   model?: string;
+  maxTokens?: number;
 }): Promise<CallClaudeResult> {
   const started = Date.now();
   const client = getAnthropicClient();
@@ -59,7 +63,7 @@ export async function callClaude({
 
   const message = await client.messages.create({
     model,
-    max_tokens: MAX_TOKENS,
+    max_tokens: maxTokens,
     temperature,
     system: systemPrompt,
     messages: [{ role: "user", content: userPrompt }],
@@ -115,5 +119,6 @@ export async function callClaude({
       cache_read_tokens: cacheRead,
       cache_creation_tokens: cacheCreation,
     },
+    stopReason: message.stop_reason ?? null,
   };
 }

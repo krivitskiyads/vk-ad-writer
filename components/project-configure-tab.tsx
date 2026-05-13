@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Check, Loader2, Minus, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
+import { useProjectGenerationOptional } from "@/components/project-generation-context";
 import { SegmentCardExpandable } from "@/components/segment-card-expandable";
 import { TechniquesEditor } from "@/components/techniques-editor";
 import { Button } from "@/components/ui/button";
@@ -152,7 +153,7 @@ export function ProjectConfigureTab({
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialMount = useRef(true);
 
-  const [generating, setGenerating] = useState(false);
+  const generationCtx = useProjectGenerationOptional();
 
   const selectedSegments = useMemo(() => {
     if (!analysisState) return [];
@@ -275,31 +276,38 @@ export function ProjectConfigureTab({
     schedulePersistTechniques(ai);
   };
 
-  const runGenerate = async () => {
+  const runGenerate = () => {
     if (selectedSegments.length === 0) {
       toast.error("Выберите сегменты на вкладке «Анализ»");
       return;
     }
-    setGenerating(true);
-    try {
-      const res = await fetch(`/api/projects/${projectId}/generate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(
-          typeof data.error === "string" ? data.error : "Генерация не удалась"
+    generationCtx?.setGenerating(projectId);
+    router.push(`${projectBasePath}/texts`);
+    void fetch(`/api/projects/${projectId}/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          toast.error(
+            typeof data.error === "string" ? data.error : "Генерация не удалась"
+          );
+          return;
+        }
+        toast.success(
+          `Готово${Array.isArray((data as { texts?: unknown }).texts) ? `, ${(data as { texts: unknown[] }).texts.length} текстов` : ""}`
         );
-      }
-      router.push(`${projectBasePath}/texts`);
-      router.refresh();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Ошибка");
-    } finally {
-      setGenerating(false);
-    }
+        router.refresh();
+        generationCtx?.bumpUsageRefresh();
+      })
+      .catch(() => {
+        toast.error("Ошибка сети при генерации");
+      })
+      .finally(() => {
+        generationCtx?.setGenerating(null);
+      });
   };
 
   const modelPreset = toPreset(modelId);
@@ -567,20 +575,11 @@ export function ProjectConfigureTab({
           <Button
             type="button"
             size="lg"
-            disabled={
-              generating || selectedSegments.length === 0 || !analysisState
-            }
+            disabled={selectedSegments.length === 0 || !analysisState}
             className="min-w-[200px] gap-2 bg-violet-600 text-white hover:bg-violet-700"
-            onClick={() => void runGenerate()}
+            onClick={runGenerate}
           >
-            {generating ? (
-              <>
-                <Loader2 className="size-4 animate-spin" aria-hidden />
-                Создаём варианты…
-              </>
-            ) : (
-              "Сгенерировать тексты"
-            )}
+            Сгенерировать тексты
           </Button>
         </div>
       </div>

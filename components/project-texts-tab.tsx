@@ -6,6 +6,7 @@ import { Copy, Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { BatchCard } from "@/components/batch-card";
+import { useProjectGenerationOptional } from "@/components/project-generation-context";
 import { ProjectUsageWidget } from "@/components/project-usage-widget";
 import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button";
@@ -63,6 +64,19 @@ export function ProjectTextsTab({
   workspaceProjectsHref,
 }: Props) {
   const router = useRouter();
+  const generationCtx = useProjectGenerationOptional();
+  const isGeneratingFromConfigure =
+    generationCtx?.generatingProjectId === projectId;
+
+  const nextBatchNumber = useMemo(() => {
+    let max = 0;
+    for (const b of batches) {
+      const n = b.batch_number;
+      if (typeof n === "number" && n > max) max = n;
+    }
+    return max + 1;
+  }, [batches]);
+
   const [runContext, setRunContext] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState(LOADING_MESSAGES[0]);
@@ -119,7 +133,8 @@ export function ProjectTextsTab({
       const saved = data as { texts?: any[] };
       setRunContext("");
       toast.success(`Готово${Array.isArray(saved.texts) ? `, ${saved.texts.length} текстов` : ""}`);
-      refresh();
+      router.refresh();
+      generationCtx?.bumpUsageRefresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Ошибка генерации");
     } finally {
@@ -227,39 +242,57 @@ export function ProjectTextsTab({
         </CardContent>
       </Card>
 
-      {batches.length > 0 && (
+      {(batches.length > 0 || isGeneratingFromConfigure) && (
         <div className="space-y-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-lg font-semibold">
-                История генераций <span className="text-muted-foreground font-normal">({batches.length})</span>
+                История генераций{" "}
+                <span className="text-muted-foreground font-normal">
+                  ({batches.length + (isGeneratingFromConfigure ? 1 : 0)})
+                </span>
               </h2>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="secondary" size="sm" onClick={selectAll}>
-                Выбрать все
-              </Button>
-              <Button type="button" variant="ghost" size="sm" onClick={clearSelection}>
-                Снять выбор
-              </Button>
-              <Button type="button" variant="outline" size="sm" className="gap-1" onClick={() => void copySelected()}>
-                <Copy className="size-3.5" aria-hidden />
-                Копировать выбранные
-              </Button>
-              <Button type="button" variant="outline" size="sm" className="gap-1" onClick={downloadSelected}>
-                <Download className="size-3.5" aria-hidden />
-                Скачать выбранные
-              </Button>
-            </div>
+            {batches.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="secondary" size="sm" onClick={selectAll}>
+                  Выбрать все
+                </Button>
+                <Button type="button" variant="ghost" size="sm" onClick={clearSelection}>
+                  Снять выбор
+                </Button>
+                <Button type="button" variant="outline" size="sm" className="gap-1" onClick={() => void copySelected()}>
+                  <Copy className="size-3.5" aria-hidden />
+                  Копировать выбранные
+                </Button>
+                <Button type="button" variant="outline" size="sm" className="gap-1" onClick={downloadSelected}>
+                  <Download className="size-3.5" aria-hidden />
+                  Скачать выбранные
+                </Button>
+              </div>
+            ) : null}
           </div>
 
           <div className="space-y-3">
+            {isGeneratingFromConfigure ? (
+              <div className="animate-pulse rounded-xl border border-violet-200 bg-violet-50/80 px-4 py-4">
+                <div className="flex items-center gap-3 text-sm font-medium text-foreground">
+                  <Loader2
+                    className="size-5 shrink-0 animate-spin text-violet-600"
+                    aria-hidden
+                  />
+                  <span>
+                    Генерация #{nextBatchNumber} — обрабатываем ваш запрос…
+                  </span>
+                </div>
+              </div>
+            ) : null}
             {batches.map((b, i) => (
               <BatchCard
                 key={b.id}
                 projectId={projectId}
                 batch={b}
-                defaultOpen={i === 0}
+                defaultOpen={i === 0 && !isGeneratingFromConfigure}
                 selectedTextIds={selectedIds}
                 onToggleText={toggleText}
                 onRefresh={refresh}

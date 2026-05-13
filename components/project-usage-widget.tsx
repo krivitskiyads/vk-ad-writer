@@ -10,6 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { useProjectGenerationOptional } from "@/components/project-generation-context";
 import { createClient } from "@/lib/supabase/client";
 
 type OpStats = {
@@ -92,6 +93,8 @@ export function ProjectUsageWidget({ projectId }: Props) {
   const [stats, setStats] = useState<StatsPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const generationCtx = useProjectGenerationOptional();
+  const usageRefreshTick = generationCtx?.usageRefreshTick ?? 0;
 
   useEffect(() => {
     let cancelled = false;
@@ -118,7 +121,7 @@ export function ProjectUsageWidget({ projectId }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [projectId]);
+  }, [projectId, usageRefreshTick]);
 
   const rows = useMemo(
     () => mergeByDisplayName(stats?.by_operation),

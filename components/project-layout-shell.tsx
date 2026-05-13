@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 
+import { ProjectGenerationProvider } from "@/components/project-generation-context";
 import { ProjectHeader } from "@/components/project-header";
 import { ProjectTabs } from "@/components/project-tabs";
 import type { Project } from "@/lib/types/project";
@@ -26,23 +27,25 @@ export function ProjectLayoutShell({
   projectBasePath,
 }: Props) {
   return (
-    <div className="space-y-6">
-      <ProjectHeader
-        projectId={project.id}
-        initialName={project.name}
-        description={project.description}
-        admin={isAdmin ? adminUsage : null}
-        workspaceProjectsHref={workspaceProjectsHref}
-      />
+    <ProjectGenerationProvider>
+      <div className="space-y-6">
+        <ProjectHeader
+          projectId={project.id}
+          initialName={project.name}
+          description={project.description}
+          admin={isAdmin ? adminUsage : null}
+          workspaceProjectsHref={workspaceProjectsHref}
+        />
 
-      <ProjectTabs
-        project={project}
-        filesCount={filesCount}
-        projectBasePath={projectBasePath}
-      />
+        <ProjectTabs
+          project={project}
+          filesCount={filesCount}
+          projectBasePath={projectBasePath}
+        />
 
-      <div>{children}</div>
-    </div>
+        <div>{children}</div>
+      </div>
+    </ProjectGenerationProvider>
   );
 }
 

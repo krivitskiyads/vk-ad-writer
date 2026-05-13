@@ -152,7 +152,7 @@ export function BatchCard({
                   />
                   <div className="min-w-0 flex-1 space-y-2 text-sm">
                     <p className="font-semibold">{t.headline}</p>
-                    <p className="whitespace-pre-wrap text-muted-foreground leading-relaxed">
+                    <p className="whitespace-pre-wrap text-foreground leading-relaxed">
                       {t.body}
                     </p>
                     <p className="text-foreground">{t.cta}</p>

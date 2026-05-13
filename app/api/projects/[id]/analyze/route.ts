@@ -317,13 +317,18 @@ export async function POST(
     });
 
     const start = performance.now();
-    const { content, usage } = await callClaude({
+    const { content, usage, stopReason } = await callClaude({
       systemPrompt,
       userPrompt,
       temperature: 0.4,
       tool: ANALYSIS_TOOL,
       toolName: "submit_analysis",
       model: analyzeModel,
+      // Реальные ответы анализатора стабильно укладываются в 3000–5000 токенов;
+      // 4096 (старый дефолт) обрезал часть проектов прямо до selected_techniques.
+      // 8192 даёт двукратный запас. Биллинг считается по фактическому output,
+      // поэтому подъём планки не увеличивает стоимость.
+      maxTokens: 8192,
     });
     const time_ms = Math.round(performance.now() - start);
 
@@ -331,6 +336,11 @@ export async function POST(
     const techniques = pickSelectedTechniques(content);
 
     if (!analysisRaw) {
+      console.error("[analyze] invalid response", {
+        projectId,
+        stopReason,
+        outputTokens: usage.output_tokens,
+      });
       await supabase
         .from("projects")
         .update({
@@ -340,6 +350,31 @@ export async function POST(
         .eq("id", projectId);
       return NextResponse.json(
         { error: "Аналитик вернул некорректный ответ" },
+        { status: 502, headers: JSON_UTF8 }
+      );
+    }
+
+    // Если ответ обрезан по лимиту токенов и при этом techniques не успели
+    // прийти — это регресс анализатора. Логируем явно и помечаем проект как
+    // failed, чтобы юзер увидел проблему и перезапустил анализ.
+    if (stopReason === "max_tokens" && !techniques) {
+      console.error("[analyze] truncated by max_tokens", {
+        projectId,
+        outputTokens: usage.output_tokens,
+        model: analyzeModel,
+      });
+      await supabase
+        .from("projects")
+        .update({
+          analysis_status: "failed",
+          analysis_started_at: null,
+        })
+        .eq("id", projectId);
+      return NextResponse.json(
+        {
+          error:
+            "Ответ аналитика обрезан по лимиту токенов — повторите запуск (если повторяется, сократите материалы).",
+        },
         { status: 502, headers: JSON_UTF8 }
       );
     }
