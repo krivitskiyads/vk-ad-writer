@@ -15,6 +15,8 @@ type Props = {
   project: Project;
   materials: ProjectFile[];
   successfulTexts: ProjectFile[];
+  /** Slug workspace для библиотеки материалов (вкладка загрузки). */
+  workspaceSlug: string;
   /** По умолчанию легаси-путь `/projects/:id`. */
   projectBasePath?: string;
 };
@@ -28,6 +30,7 @@ export function ProjectUploadTab({
   project,
   materials,
   successfulTexts,
+  workspaceSlug,
   projectBasePath: projectBasePathProp,
 }: Props) {
   const projectBasePath = projectBasePathProp ?? `/projects/${projectId}`;
@@ -38,6 +41,7 @@ export function ProjectUploadTab({
       project={project}
       materials={materials}
       successfulTexts={successfulTexts}
+      workspaceSlug={workspaceSlug}
       projectBasePath={projectBasePath}
     />
   );
@@ -48,6 +52,7 @@ function ProjectUploadTabContent({
   project,
   materials,
   successfulTexts,
+  workspaceSlug,
   projectBasePath,
 }: ContentProps) {
   const [description, setDescription] = useState(project.description ?? "");
@@ -62,7 +67,11 @@ function ProjectUploadTabContent({
         onChange={setDescription}
       />
 
-      <ProjectMaterialsSection projectId={projectId} initialFiles={materials} />
+      <ProjectMaterialsSection
+        projectId={projectId}
+        workspaceSlug={workspaceSlug}
+        initialFiles={materials}
+      />
 
       <ProjectSuccessfulTextsSection
         projectId={projectId}

@@ -8,7 +8,8 @@ export type UsageOperation =
   | "analyze_project"
   | "generate"
   | "regenerate"
-  | "ocr_pdf";
+  | "ocr_pdf"
+  | "tag_material";
 
 export type WriteUsageLogParams = {
   userId: string;

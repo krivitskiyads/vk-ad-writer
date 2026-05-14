@@ -28,6 +28,7 @@ export default async function WorkspaceProjectUploadPage({
       project={project}
       materials={materials}
       successfulTexts={successfulTexts}
+      workspaceSlug={slug}
       projectBasePath={`/w/${slug}/projects/${id}`}
     />
   );

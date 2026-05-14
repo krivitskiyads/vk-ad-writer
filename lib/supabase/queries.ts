@@ -18,6 +18,13 @@ import type {
 } from "@/lib/types/project";
 import type { ProjectFile, ProjectFileKind } from "@/lib/types/project-files";
 import type { GeneratedTextBatch } from "@/lib/types/generated-texts";
+import type {
+  MaterialTag,
+  WorkspaceMaterial,
+  WorkspaceMaterialSummary,
+  WorkspaceMaterialWithAuthor,
+} from "@/lib/types/workspace-materials";
+import { normalizeMaterialTag } from "@/lib/types/workspace-materials";
 import type { GenerationSettings } from "@/lib/generation-settings";
 import type { ProjectUsageSummary } from "@/lib/types/project-usage";
 
@@ -237,6 +244,294 @@ export async function deleteProjectFile(fileId: string): Promise<void> {
     .delete()
     .eq("id", fileId);
   if (error) throw error;
+}
+
+/**
+ * Копирует материалы из библиотеки workspace в файлы проекта (kind = material).
+ */
+export async function attachWorkspaceMaterialsToProject(
+  projectId: string,
+  materialIds: string[]
+): Promise<ProjectFile[]> {
+  const unique = [
+    ...new Set(
+      materialIds.filter((x) => typeof x === "string" && x.trim().length > 0)
+    ),
+  ];
+  if (unique.length === 0) return [];
+
+  const project = await getProject(projectId);
+  if (!project) throw new Error("Проект не найден");
+  const workspaceId = project.workspace_id;
+  if (!workspaceId) {
+    throw new Error(
+      "У проекта нет привязки к workspace — библиотека материалов недоступна"
+    );
+  }
+
+  const supabase = await sb();
+  const { data: rows, error } = await supabase
+    .from("workspace_files")
+    .select("id, workspace_id, name, content_text, file_extension")
+    .in("id", unique)
+    .eq("workspace_id", workspaceId);
+  if (error) throw error;
+
+  const list = (rows ?? []) as Array<{
+    id: string;
+    workspace_id: string;
+    name: string;
+    content_text: string;
+    file_extension: string;
+  }>;
+
+  if (list.length !== unique.length) {
+    throw new Error(
+      "Не все материалы найдены или они не относятся к workspace проекта"
+    );
+  }
+
+  const byId = new Map(list.map((r) => [r.id, r]));
+  const created: ProjectFile[] = [];
+
+  for (const id of unique) {
+    const row = byId.get(id);
+    if (!row) {
+      throw new Error("Не удалось сопоставить материалы");
+    }
+    const content = row.content_text ?? "";
+    const sizeBytes = new TextEncoder().encode(content).length;
+    const file = await createProjectFile(projectId, {
+      name: row.name,
+      content,
+      file_type: row.file_extension,
+      size_bytes: sizeBytes,
+      kind: "material",
+    });
+    created.push(file);
+  }
+
+  return created;
+}
+
+function rowToWorkspaceMaterial(row: Record<string, unknown>): WorkspaceMaterial {
+  const tokens = row.content_tokens;
+  return {
+    id: String(row.id),
+    workspace_id: String(row.workspace_id),
+    name: String(row.name),
+    description:
+      row.description === null || row.description === undefined
+        ? null
+        : String(row.description),
+    tag: normalizeMaterialTag(row.tag),
+    content_text: String(row.content_text),
+    file_extension: String(row.file_extension),
+    source_filename: String(row.source_filename),
+    content_tokens:
+      typeof tokens === "number" && Number.isFinite(tokens) ? tokens : null,
+    created_by: String(row.created_by),
+    created_at: String(row.created_at),
+    updated_at: String(row.updated_at),
+  };
+}
+
+async function authorByUserIdForWorkspace(
+  workspaceId: string,
+  userId: string
+): Promise<WorkspaceMaterialWithAuthor["author"]> {
+  const supabase = await sb();
+  const { data: members, error } = await supabase.rpc("get_workspace_members", {
+    p_workspace_id: workspaceId,
+  });
+  if (error) throw error;
+  type MemberRow = { user_id: string; email: string };
+  const list = (members ?? []) as MemberRow[];
+  const row = list.find((m) => String(m.user_id) === userId);
+  if (!row?.email) return null;
+  return { id: userId, email: row.email };
+}
+
+// ============================================================================
+// Материалы workspace (библиотека файлов)
+// ============================================================================
+
+function rowToWorkspaceMaterialSummary(
+  row: Record<string, unknown>,
+  emailByUserId: Map<string, string>
+): WorkspaceMaterialSummary {
+  const tokens = row.content_tokens;
+  const createdBy = String(row.created_by);
+  const email = emailByUserId.get(createdBy);
+  return {
+    id: String(row.id),
+    workspace_id: String(row.workspace_id),
+    name: String(row.name),
+    description:
+      row.description === null || row.description === undefined
+        ? null
+        : String(row.description),
+    tag: normalizeMaterialTag(row.tag),
+    file_extension: String(row.file_extension),
+    source_filename: String(row.source_filename),
+    content_tokens:
+      typeof tokens === "number" && Number.isFinite(tokens) ? tokens : null,
+    created_by: createdBy,
+    created_at: String(row.created_at),
+    updated_at: String(row.updated_at),
+    author: email ? { id: createdBy, email } : null,
+  };
+}
+
+/** Список материалов без `content_text` (легче для диалогов). */
+export async function listWorkspaceMaterialsSummary(
+  workspaceId: string
+): Promise<WorkspaceMaterialSummary[]> {
+  const supabase = await sb();
+  const { data: rows, error } = await supabase
+    .from("workspace_files")
+    .select(
+      "id, workspace_id, name, description, tag, file_extension, source_filename, content_tokens, created_by, created_at, updated_at"
+    )
+    .eq("workspace_id", workspaceId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+
+  const { data: members, error: memErr } = await supabase.rpc(
+    "get_workspace_members",
+    { p_workspace_id: workspaceId }
+  );
+  if (memErr) throw memErr;
+  const emailByUserId = new Map<string, string>();
+  for (const m of members ?? []) {
+    const r = m as { user_id: string; email: string };
+    emailByUserId.set(String(r.user_id), r.email);
+  }
+
+  return (rows ?? []).map((raw) =>
+    rowToWorkspaceMaterialSummary(raw as Record<string, unknown>, emailByUserId)
+  );
+}
+
+export async function listWorkspaceMaterials(
+  workspaceId: string
+): Promise<WorkspaceMaterialWithAuthor[]> {
+  const supabase = await sb();
+  const { data: rows, error } = await supabase
+    .from("workspace_files")
+    .select("*")
+    .eq("workspace_id", workspaceId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+
+  const { data: members, error: memErr } = await supabase.rpc(
+    "get_workspace_members",
+    { p_workspace_id: workspaceId }
+  );
+  if (memErr) throw memErr;
+  const emailByUserId = new Map<string, string>();
+  for (const m of members ?? []) {
+    const r = m as { user_id: string; email: string };
+    emailByUserId.set(String(r.user_id), r.email);
+  }
+
+  return (rows ?? []).map((raw) => {
+    const row = raw as Record<string, unknown>;
+    const mat = rowToWorkspaceMaterial(row);
+    const email = emailByUserId.get(mat.created_by);
+    return {
+      ...mat,
+      author: email ? { id: mat.created_by, email } : null,
+    };
+  });
+}
+
+export async function getWorkspaceMaterial(
+  materialId: string
+): Promise<WorkspaceMaterialWithAuthor | null> {
+  const supabase = await sb();
+  const { data: row, error } = await supabase
+    .from("workspace_files")
+    .select("*")
+    .eq("id", materialId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!row) return null;
+
+  const mat = rowToWorkspaceMaterial(row as Record<string, unknown>);
+  const author = await authorByUserIdForWorkspace(mat.workspace_id, mat.created_by);
+  return { ...mat, author };
+}
+
+export async function createWorkspaceMaterial(params: {
+  workspaceId: string;
+  name: string;
+  description?: string | null;
+  tag: MaterialTag;
+  contentText: string;
+  fileExtension: string;
+  sourceFilename: string;
+  contentTokens?: number | null;
+}): Promise<WorkspaceMaterial> {
+  const supabase = await sb();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+
+  const { data, error } = await supabase
+    .from("workspace_files")
+    .insert({
+      workspace_id: params.workspaceId,
+      name: params.name,
+      description: params.description ?? null,
+      tag: params.tag,
+      content_text: params.contentText,
+      file_extension: params.fileExtension,
+      source_filename: params.sourceFilename,
+      content_tokens:
+        params.contentTokens !== undefined && params.contentTokens !== null
+          ? params.contentTokens
+          : null,
+      created_by: user.id,
+    })
+    .select("*")
+    .single();
+  if (error) throw error;
+  return rowToWorkspaceMaterial(data as Record<string, unknown>);
+}
+
+export async function deleteWorkspaceMaterial(materialId: string): Promise<void> {
+  const supabase = await sb();
+  const { error } = await supabase
+    .from("workspace_files")
+    .delete()
+    .eq("id", materialId);
+  if (error) throw error;
+}
+
+export async function updateWorkspaceMaterial(
+  materialId: string,
+  fields: {
+    name?: string;
+    description?: string | null;
+    tag?: MaterialTag;
+  }
+): Promise<WorkspaceMaterial> {
+  const supabase = await sb();
+  const patch: Record<string, unknown> = {};
+  if (fields.name !== undefined) patch.name = fields.name;
+  if (fields.description !== undefined) patch.description = fields.description;
+  if (fields.tag !== undefined) patch.tag = fields.tag;
+
+  const { data, error } = await supabase
+    .from("workspace_files")
+    .update(patch)
+    .eq("id", materialId)
+    .select("*")
+    .single();
+  if (error) throw error;
+  return rowToWorkspaceMaterial(data as Record<string, unknown>);
 }
 
 // ============================================================================

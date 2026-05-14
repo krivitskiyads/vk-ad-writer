@@ -10,6 +10,8 @@ import {
   FileListItem,
   type ParsedFile,
 } from "@/components/file-drop-zone";
+import { SelectFromLibraryDialog } from "@/components/select-from-library-dialog";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -21,13 +23,19 @@ import type { ProjectFile } from "@/lib/types/project-files";
 
 type Props = {
   projectId: string;
+  workspaceSlug: string;
   initialFiles: ProjectFile[];
 };
 
-export function ProjectMaterialsSection({ projectId, initialFiles }: Props) {
+export function ProjectMaterialsSection({
+  projectId,
+  workspaceSlug,
+  initialFiles,
+}: Props) {
   const router = useRouter();
   const [files, setFiles] = useState<ProjectFile[]>(initialFiles);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [libraryOpen, setLibraryOpen] = useState(false);
 
   const uploadParsed = async (parsed: ParsedFile[]) => {
     const created: ProjectFile[] = [];
@@ -132,16 +140,41 @@ export function ProjectMaterialsSection({ projectId, initialFiles }: Props) {
             ))}
           </ul>
         )}
-        <FileDropZone
-          projectId={projectId}
-          onFilesParsed={uploadParsed}
-          hint={
-            files.length === 0
-              ? "Перетащите сюда первые материалы клиента. Поддерживаются PDF, DOCX, TXT, CSV."
-              : "Добавить ещё файлы"
-          }
-        />
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
+          <div className="min-w-0 flex-1">
+            <FileDropZone
+              projectId={projectId}
+              onFilesParsed={uploadParsed}
+              hint={
+                files.length === 0
+                  ? "Перетащите сюда первые материалы клиента. Поддерживаются PDF, DOCX, TXT, CSV."
+                  : "Добавить ещё файлы"
+              }
+            />
+          </div>
+          <div className="flex shrink-0 sm:w-auto sm:pt-0">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-auto min-h-10 w-full whitespace-normal px-3 py-2 text-center sm:h-full sm:min-h-[72px] sm:w-[160px] sm:self-stretch"
+              onClick={() => setLibraryOpen(true)}
+            >
+              Выбрать из библиотеки
+            </Button>
+          </div>
+        </div>
       </CardContent>
+
+      <SelectFromLibraryDialog
+        open={libraryOpen}
+        onOpenChange={setLibraryOpen}
+        workspaceSlug={workspaceSlug}
+        projectId={projectId}
+        onAttached={(created) => {
+          setFiles((prev) => [...prev, ...created]);
+          router.refresh();
+        }}
+      />
     </Card>
   );
 }

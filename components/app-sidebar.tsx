@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { FolderKanban, Settings2, Users } from "lucide-react";
+import { BookOpen, FolderKanban, Settings2, Users } from "lucide-react";
 
 import { Separator } from "@/components/ui/separator";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
@@ -64,6 +64,28 @@ export function AppSidebar() {
             >
               <Icon className="size-4 shrink-0" aria-hidden />
               Проекты
+            </Link>
+          );
+        })()}
+        {(() => {
+          if (!workspaceSlug) return null;
+          const materialsHref = `/w/${workspaceSlug}/materials`;
+          const materialsActive = pathname.startsWith(
+            `/w/${workspaceSlug}/materials`
+          );
+          const MatIcon = BookOpen;
+          return (
+            <Link
+              href={materialsHref}
+              className={cn(
+                "flex items-center gap-2.5 rounded-md px-3 py-2 text-[14px] font-medium transition-colors",
+                materialsActive
+                  ? "border-l-[3px] border-[#7c3aed] bg-[rgba(124,58,237,0.08)] text-[#6d28d9]"
+                  : "text-[#9ca3af] hover:bg-[#f9fafb] hover:text-[#374151]"
+              )}
+            >
+              <MatIcon className="size-4 shrink-0" aria-hidden />
+              Материалы
             </Link>
           );
         })()}

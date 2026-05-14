@@ -30,6 +30,17 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const pathname = request.nextUrl.pathname;
+
+  if (pathname.startsWith("/api/workspaces")) {
+    if (!user) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401, headers: { "Content-Type": "application/json; charset=utf-8" } }
+      );
+    }
+    return response;
+  }
+
   // Защищённые области приложения (в т.ч. /w/... — проверка членства в layout, RLS в БД).
   const isPublicRoute =
     pathname.startsWith("/login") ||
@@ -60,6 +71,10 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/).*)"],
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|api/).*)",
+    "/api/workspaces",
+    "/api/workspaces/:path*",
+  ],
 };
 
