@@ -10,10 +10,13 @@ export const revalidate = 0;
 
 export default async function WorkspaceProjectAnalysisPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string; id: string }>;
+  searchParams: Promise<{ starting?: string }>;
 }) {
   const { slug, id } = await params;
+  const { starting } = await searchParams;
   const workspace = await getWorkspaceBySlug(slug);
   if (!workspace) notFound();
 
@@ -23,13 +26,17 @@ export default async function WorkspaceProjectAnalysisPage({
 
   const projectBasePath = `/w/${slug}/projects/${id}`;
 
+  const isStarting = starting === "1";
+  const shouldPoll = isStarting || project.analysis_status === "analyzing";
+
   return (
     <>
-      {project.analysis_status === "analyzing" && <AnalysisPoller projectId={id} />}
+      {shouldPoll && <AnalysisPoller projectId={id} />}
       <ProjectAnalysisTab
         projectId={id}
         project={project}
         projectBasePath={projectBasePath}
+        forceShowProgress={isStarting && project.analysis_status === "pending"}
       />
     </>
   );

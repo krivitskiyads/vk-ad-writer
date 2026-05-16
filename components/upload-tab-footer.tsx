@@ -43,9 +43,10 @@ export function UploadTabFooter({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ analysisModelId: selectedAnalysisModel }),
+      keepalive: true,
     }).catch((err) => console.error("[upload-footer] analyze failed", err));
     await new Promise((r) => setTimeout(r, 300));
-    window.location.href = `${projectBasePath}/analysis`;
+    window.location.href = `${projectBasePath}/analysis?starting=1`;
   };
 
   const goToAnalysis = () => {

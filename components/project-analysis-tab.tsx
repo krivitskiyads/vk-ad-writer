@@ -35,6 +35,8 @@ type Props = {
   projectId: string;
   project: Project;
   projectBasePath: string;
+  /** После редиректа с ?starting=1 показываем прогресс, пока в БД ещё pending. */
+  forceShowProgress?: boolean;
 };
 
 function safeAnalysis(raw: unknown): ProjectAnalysis | null {
@@ -44,7 +46,12 @@ function safeAnalysis(raw: unknown): ProjectAnalysis | null {
   return withStableSegmentIds(parsed);
 }
 
-export function ProjectAnalysisTab({ projectId, project, projectBasePath }: Props) {
+export function ProjectAnalysisTab({
+  projectId,
+  project,
+  projectBasePath,
+  forceShowProgress = false,
+}: Props) {
   const router = useRouter();
 
   const analysis = useMemo(() => safeAnalysis(project.analysis), [project.analysis]);
@@ -74,6 +81,8 @@ export function ProjectAnalysisTab({ projectId, project, projectBasePath }: Prop
   );
   const [saveError, setSaveError] = useState<string | null>(null);
   const [openSegmentId, setOpenSegmentId] = useState<string | null>(null);
+  const [recheckOpen, setRecheckOpen] = useState(false);
+  const [rechecking, setRechecking] = useState(false);
 
   useEffect(() => {
     setSelectedIds(defaultSelected);
@@ -126,10 +135,6 @@ export function ProjectAnalysisTab({ projectId, project, projectBasePath }: Prop
     });
   };
 
-  const status = project.analysis_status;
-
-  const [recheckOpen, setRecheckOpen] = useState(false);
-  const [rechecking, setRechecking] = useState(false);
   const restartAnalyze = async () => {
     setRechecking(true);
     // новый анализ сбрасывает selected_segment_ids в [], синхронизируем UI сразу
@@ -143,6 +148,18 @@ export function ProjectAnalysisTab({ projectId, project, projectBasePath }: Prop
     router.refresh();
     setTimeout(() => setRechecking(false), 400);
   };
+
+  const status = project.analysis_status;
+
+  if (status === "pending" && forceShowProgress) {
+    const fallbackStartedAt = new Date().toISOString();
+    return (
+      <AnalysisProgress
+        startedAt={fallbackStartedAt}
+        model={undefined}
+      />
+    );
+  }
 
   const isSaving = saveStatus === "saving";
 
