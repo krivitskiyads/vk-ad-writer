@@ -5,6 +5,7 @@ import { callClaude } from "@/lib/ai/claude-client";
 import {
   buildCopywriterSystemPrompt,
   buildSingleTextUserPrompt,
+  type Assignment,
   type CopywriterKnowledge,
 } from "@/lib/prompts/copywriter";
 import {
@@ -68,6 +69,34 @@ const APPROACH_POOL = [
   "Результат в цифрах",
   "Отработка главного возражения → гарантия",
 ];
+
+/**
+ * Выбор иерархии каркаса текста. Приоритет:
+ * 1) Структуры из БД — распределяются циклично по N текстам.
+ * 2) Иначе формулы из БД — циклично.
+ * 3) Иначе подходы из APPROACH_POOL (fallback при отсутствии техник или только при выборе одних триггеров).
+ */
+function pickAssignments(
+  knowledge: CopywriterKnowledge,
+  textCount: number
+): Assignment[] {
+  if (knowledge.structures.length > 0) {
+    return Array.from({ length: textCount }, (_, i): Assignment => ({
+      type: "structure",
+      entry: knowledge.structures[i % knowledge.structures.length],
+    }));
+  }
+  if (knowledge.formulas.length > 0) {
+    return Array.from({ length: textCount }, (_, i): Assignment => ({
+      type: "formula",
+      entry: knowledge.formulas[i % knowledge.formulas.length],
+    }));
+  }
+  return Array.from({ length: textCount }, (_, i): Assignment => ({
+    type: "approach",
+    approach: APPROACH_POOL[i % APPROACH_POOL.length],
+  }));
+}
 
 const DEFAULT_MODEL = "claude-sonnet-4-6";
 
@@ -229,10 +258,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       segments,
     };
 
-    const approaches = Array.from(
-      { length: textCount },
-      (_, i) => APPROACH_POOL[i % APPROACH_POOL.length]
-    );
+    const assignments = pickAssignments(knowledgeForCopywriter, textCount);
     const formats = Array.from({ length: textCount }, () => {
       if (textFormatNorm === "mixed") return "mixed";
       return textFormatNorm;
@@ -248,7 +274,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         segment: segmentAssignments[i],
         trafficDestination,
         textFormat: formats[i] as "short" | "long" | "mixed" | "micro",
-        approach: approaches[i],
+        assignment: assignments[i],
         customWishes: augmentedWishes || undefined,
         textIndex: i + 1,
         totalTexts: textCount,

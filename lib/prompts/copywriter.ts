@@ -2,6 +2,15 @@ import type { AnalysisSegment, ProjectAnalysis } from "@/lib/types/project-analy
 import type { GeneratedAdText } from "@/lib/types/generated-texts";
 import type { KnowledgeBaseEntry } from "@/lib/types/knowledge-base";
 
+/**
+ * Что диктует структуру одного текста при генерации.
+ * Иерархия выбирается в generate/route.ts через pickAssignments.
+ */
+export type Assignment =
+  | { type: "structure"; entry: KnowledgeBaseEntry }
+  | { type: "formula"; entry: KnowledgeBaseEntry }
+  | { type: "approach"; approach: string };
+
 export type CopywriterKnowledge = {
   triggers: KnowledgeBaseEntry[];
   formulas: KnowledgeBaseEntry[];
@@ -101,30 +110,40 @@ export function buildCopywriterSystemPrompt(
   const triggersBlock = formatGroup(triggers, formatTrigger);
   const structuresBlock = formatGroup(structures, formatStructure);
 
+  const techniqueSubsections: string[] = [];
+  if (structures.length > 0) {
+    techniqueSubsections.push(
+      `СТРУКТУРЫ (готовые блоки текста под формат ВК):\n${structuresBlock}`
+    );
+  }
+  if (formulas.length > 0) {
+    techniqueSubsections.push(
+      `ФОРМУЛЫ (стратегия построения целого текста):\n${formulasBlock}`
+    );
+  }
+  if (triggers.length > 0) {
+    techniqueSubsections.push(
+      `ТРИГГЕРЫ (психологические крючки — вплетай 2-4 в каждый текст):\n${triggersBlock}`
+    );
+  }
+
   const techniquesSection = hasTechniques
     ? `
 ═══════════════════════════════════════════════════
 ТЕХНИКИ ДЛЯ ЭТОГО ПРОЕКТА
 ═══════════════════════════════════════════════════
 
-Аналитик выбрал для этого проекта конкретные техники из базы знаний. Применяй их в каждом тексте.
+Для этого проекта выбраны конкретные техники из базы знаний.
 
-ФОРМУЛА (стратегия построения целого текста):
-${formulasBlock}
+${techniqueSubsections.join("\n\n")}
 
-ТРИГГЕРЫ (психологические крючки — комбинируй 2-4 в каждом тексте):
-${triggersBlock}
+КАК ПРИМЕНЯТЬ ТЕХНИКИ:
 
-СТРУКТУРЫ (каркас под формат ВК — выбирай одну на текст):
-${structuresBlock}
-
-КАК ПРИМЕНЯТЬ:
-
-1. Каждый текст строй по выбранной формуле — это главный каркас.
-2. Внутри формулы органично вплетай 2-4 триггера из списка. Не используй один и тот же триггер во всех текстах одного батча — варьируй комбинации.
-3. Используй структуру как ритмический и визуальный каркас (где блоки текста, где переносы, где списки).
-4. Тексты должны звучать естественно, не как набор техник. Если фраза-пример из триггера не подходит контексту — адаптируй смысл под нишу, не копируй буквально.
-5. Если выбрано 2 структуры — чередуй их между текстами в батче, чтобы выходило разнообразно.
+1. ПРИОРИТЕТ: если в user-промпте задана ОБЯЗАТЕЛЬНАЯ СТРУКТУРА или ОБЯЗАТЕЛЬНАЯ ФОРМУЛА — следуй ей буквально, блок за блоком, в указанном порядке. Список подходов из секции «ПОДХОДЫ К НАПИСАНИЮ ТЕКСТОВ» ниже игнорируй — он используется только когда конкретная техника не задана.
+2. Если в user-промпте задана структура — её блоки разделяются пропусками строк, каждый блок выполняет ровно ту функцию, что в нём описана. Не сливай блоки в сплошной текст.
+3. Если в user-промпте задана формула — все её этапы должны явно прозвучать в тексте в указанном порядке.
+4. Триггеры (если они в списке выше) вплетай в любой текст как психологические усиления — 2-4 триггера на текст, варьируй их между текстами в батче.
+5. Тексты должны звучать естественно, не как набор техник. Фразы-примеры из триггеров — это ориентир, а не дословный шаблон. Адаптируй смысл под нишу.
 `
     : "";
 
@@ -188,11 +207,35 @@ ${noEmDashSection}
       "pain_point_addressed": "Какую боль закрывает",
       "funnel_stage": "cold | warm | hot",
       "text_format": "short | long",
-      "approach": "Название подхода (из списка ниже)",
+      "approach": "Точное название использованной техники (структуры, формулы или подхода) — так, как оно задано в user-промпте",
       "approach_explanation": "Почему выбран именно этот подход — 1-2 предложения"
     }
   ]
 }
+
+═══════════════════════════════════════════════════
+ВАЖНО: РАЗДЕЛЕНИЕ ПОЛЕЙ headline / body / cta
+═══════════════════════════════════════════════════
+
+headline, body и cta — это РАЗНЫЕ части одного текста. Фронтенд при показе соединит их в порядке: headline → пустая строка → body → пустая строка → cta. Поэтому:
+
+- В body НЕ повторяй headline в начале. headline уже отображается отдельно сверху.
+- В body НЕ повторяй cta в конце. cta уже отображается отдельно снизу.
+- body содержит ТОЛЬКО средние блоки текста между заголовком и призывом.
+
+Если в обязательной структуре первый блок — вопрос-крючок или заголовочное утверждение, положи его в headline (не дублируй в body).
+Если последний блок — призыв к действию, положи его в cta (не дублируй в body).
+Всё что между — только в body.
+
+Пример (структура "Вопрос + 3 буллита + CTA"):
+- headline: "Хочешь, чтобы стрижка держала форму 3 недели?"
+- body: "— Работаем только проверенными ножницами\n— Подбираем форму под овал лица\n— Бесплатная консультация после стрижки"
+- cta: "Запись на эту неделю до пятницы. Звони или пиши в сообщения."
+
+НЕПРАВИЛЬНО (старое поведение):
+- headline: "Хочешь...?"
+- body: "Хочешь...?\n\n— Работаем...\n\nЗапись..."
+- cta: "Запись..."
 
 ПОДХОДЫ К НАПИСАНИЮ ТЕКСТОВ
 
@@ -262,7 +305,9 @@ avito:
 
 ПРАВИЛА НАПИСАНИЯ
 
-1. Каждый текст — ДРУГОЙ подход и логика воздействия. Не повторяй структуры и триггеры.
+1. Если в user-промпте задана ОБЯЗАТЕЛЬНАЯ СТРУКТУРА или ОБЯЗАТЕЛЬНАЯ ФОРМУЛА — следуй ей буквально. Список подходов в этой секции игнорируй. Каждый текст пишется по заданной технике; разнообразие достигается за счёт болей, тона, триггеров — но не за счёт смены каркаса.
+
+   Если обязательная техника НЕ задана (fallback на APPROACH_POOL) — тогда каждый текст должен использовать ДРУГОЙ подход и логику воздействия, не повторяя структуры из соседних текстов того же батча.
 
 2. Первое предложение — самое важное. Оно видно до "показать полностью" в ленте ВК. Оно должно цеплять и останавливать скролл.
 
@@ -387,7 +432,7 @@ export function buildSingleTextUserPrompt(input: {
   segment: AnalysisSegment;
   trafficDestination: string;
   textFormat: CopywriterTextFormat;
-  approach: string;
+  assignment: Assignment;
   customWishes?: string;
   referenceTexts?: string;
   feedback?: string;
@@ -400,7 +445,7 @@ export function buildSingleTextUserPrompt(input: {
     segment,
     trafficDestination,
     textFormat,
-    approach,
+    assignment,
     customWishes,
     referenceTexts,
     feedback,
@@ -431,6 +476,8 @@ export function buildSingleTextUserPrompt(input: {
           ? "long"
           : "mixed";
 
+  const techniqueInstruction = buildTechniqueInstruction(assignment);
+
   return [
     `Сгенерируй ОДИН рекламный текст (текст ${textIndex} из ${totalTexts}).`,
     "",
@@ -451,10 +498,11 @@ export function buildSingleTextUserPrompt(input: {
     "ПАРАМЕТРЫ:",
     `- Куда ведём трафик: ${trafficDestination}`,
     `- ${lengthInstructions[lengthKey]}`,
-    `- Обязательный подход: ${approach}`,
+    "",
+    techniqueInstruction,
     "",
     "ЗАДАЧА:",
-    `Напиши один рекламный текст для ВКонтакте, используя подход \"${approach}\".`,
+    "Напиши один рекламный текст для ВКонтакте, строго следуя обязательной технике, описанной выше.",
     "Сфокусируйся на конкретной боли этого сегмента.",
     "Текст должен быть живым, конкретным, без штампов.",
     "Первое предложение должно останавливать скролл.",
@@ -478,5 +526,67 @@ export function buildSingleTextUserPrompt(input: {
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+/**
+ * Собирает жёсткую инструкцию по обязательной технике для одного текста.
+ * Для структуры/формулы — разворачивает блоки из БД в пошаговый blueprint.
+ * Для подхода из пула (fallback) — даёт привычную мягкую инструкцию.
+ */
+function buildTechniqueInstruction(assignment: Assignment): string {
+  if (assignment.type === "structure") {
+    const e = assignment.entry;
+    const c = (e.content ?? {}) as Record<string, unknown>;
+    const principle = getString(c, "principle");
+    const blocks = getStringArray(c, "blocks");
+    const formatForVk = getString(c, "format_for_vk");
+    const exampleText = getString(c, "example_text");
+
+    const parts: string[] = [`ОБЯЗАТЕЛЬНАЯ СТРУКТУРА: ${e.title}`];
+    if (principle) parts.push(`Принцип: ${principle}`);
+    if (blocks.length > 0) {
+      const blocksList = blocks.map((b, i) => `${i + 1}. ${b}`).join("\n");
+      parts.push(`Блоки (СТРОГО в этом порядке, не пропускать и не менять местами):\n${blocksList}`);
+    }
+    if (formatForVk) parts.push(`Формат для ВК: ${formatForVk}`);
+    if (exampleText) {
+      parts.push(`Пример рабочего текста по этой структуре (для ориентира по тону и длине, НЕ копировать дословно):\n${exampleText}`);
+    }
+    parts.push(
+      "ВАЖНО: эту структуру нельзя нарушать. Между блоками — пропуски строк (пустые строки). Каждый блок выполняет ровно ту функцию, что в нём описана. В поле approach JSON-ответа верни строку точно: \"" + e.title + "\"."
+    );
+    return parts.join("\n\n");
+  }
+
+  if (assignment.type === "formula") {
+    const e = assignment.entry;
+    const c = (e.content ?? {}) as Record<string, unknown>;
+    const principle = getString(c, "principle");
+    const steps = getStringArray(c, "structure");
+    const howTo = getString(c, "how_to_apply");
+    const tpl = getString(c, "example_template");
+    const bestFor = getString(c, "best_for");
+
+    const parts: string[] = [`ОБЯЗАТЕЛЬНАЯ ФОРМУЛА: ${e.title}`];
+    if (principle) parts.push(`Принцип: ${principle}`);
+    if (steps.length > 0) {
+      const stepsList = steps.map((s, i) => `${i + 1}. ${s}`).join("\n");
+      parts.push(`Этапы (СТРОГО в этом порядке, каждый этап обязателен):\n${stepsList}`);
+    }
+    if (howTo) parts.push(`Как применять: ${howTo}`);
+    if (tpl) {
+      parts.push(`Пример рабочего текста по этой формуле (для ориентира, НЕ копировать дословно):\n${tpl}`);
+    }
+    if (bestFor) parts.push(`Хорошо подходит для: ${bestFor}`);
+    parts.push(
+      "ВАЖНО: эту формулу нельзя нарушать. Каждый этап должен явно прозвучать в тексте в указанном порядке. В поле approach JSON-ответа верни строку точно: \"" + e.title + "\"."
+    );
+    return parts.join("\n\n");
+  }
+
+  return [
+    `Обязательный подход: ${assignment.approach}`,
+    `Напиши текст в логике этого подхода. В поле approach JSON-ответа верни строку точно: "${assignment.approach}".`,
+  ].join("\n");
 }
 
