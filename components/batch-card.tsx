@@ -24,6 +24,7 @@ type Props = {
   defaultOpen?: boolean;
   selectedTextIds: Set<string>;
   onToggleText: (id: string) => void;
+  onToggleBatchSelection: (batchId: string) => void;
   onRefresh: () => void;
 };
 
@@ -51,6 +52,7 @@ export function BatchCard({
   defaultOpen = false,
   selectedTextIds,
   onToggleText,
+  onToggleBatchSelection,
   onRefresh,
 }: Props) {
   const [open, setOpen] = useState(defaultOpen);
@@ -64,6 +66,14 @@ export function BatchCard({
     const date = batch.created_at ? formatBatchDate(batch.created_at) : "дата неизвестна";
     return `Генерация #${batch.batch_number} · ${date} · модель ${modelLabel} · ${texts.length} текстов`;
   }, [batch.batch_number, batch.created_at, modelLabel, texts.length]);
+
+  const batchTextIds = useMemo(
+    () => texts.map((_, i) => textKey(batch.id, i)),
+    [batch.id, texts]
+  );
+  const selectedInBatch = batchTextIds.filter((id) => selectedTextIds.has(id)).length;
+  const allBatchSelected = texts.length > 0 && selectedInBatch === texts.length;
+  const batchIndeterminate = selectedInBatch > 0 && selectedInBatch < texts.length;
 
   const copyOne = async (t: GeneratedAdText) => {
     try {
@@ -111,6 +121,18 @@ export function BatchCard({
               ▸
             </span>
           </button>
+          <Checkbox
+            checked={allBatchSelected}
+            indeterminate={batchIndeterminate}
+            disabled={texts.length === 0}
+            onCheckedChange={() => onToggleBatchSelection(batch.id)}
+            className="mt-0.5"
+            aria-label={
+              allBatchSelected
+                ? "Снять выделение со всех текстов генерации"
+                : "Выделить все тексты генерации"
+            }
+          />
           <div className="min-w-0 flex-1">
             <div className="text-sm font-medium">{title}</div>
           </div>

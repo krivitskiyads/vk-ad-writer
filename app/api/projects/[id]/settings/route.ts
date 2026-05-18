@@ -5,6 +5,11 @@ import {
   TRAFFIC_DESTINATION_OPTIONS,
   normalizeTrafficDestination,
 } from "@/lib/traffic-options";
+import {
+  isTextLength,
+  pickFormatsFromSettings,
+  type TextLength,
+} from "@/lib/text-formats";
 import { getProjectSettings, upsertProjectSettings } from "@/lib/supabase/queries";
 import { createServerSupabase } from "@/lib/supabase/server";
 
@@ -16,13 +21,7 @@ const DEFAULTS = {
   length: "medium" as const,
 };
 
-const ALLOWED_LENGTH = new Set([
-  "micro",
-  "short",
-  "medium",
-  "long",
-  "mixed",
-]);
+const ALLOWED_LENGTH = new Set(["micro", "short", "medium", "long", "mixed"]);
 const ALLOWED_TRAFFIC = new Set(TRAFFIC_DESTINATION_OPTIONS.map((o) => o.value));
 
 function lengthFromTextFormat(
@@ -35,15 +34,43 @@ function lengthFromTextFormat(
   return "medium";
 }
 
-function textFormatFromLength(
-  length: unknown
-): "micro" | "short" | "mixed" | "long" {
-  if (length === "micro") return "micro";
-  if (length === "short") return "short";
-  if (length === "long") return "long";
-  if (length === "mixed") return "mixed";
-  if (length === "medium") return "mixed";
-  return "mixed";
+function settingsToApiJson(
+  id: string,
+  settings: GenerationSettings | null
+): Record<string, unknown> {
+  if (!settings) {
+    return {
+      project_id: id,
+      ...DEFAULTS,
+      traffic_destination: "vk_subscribe",
+      trafficDestination: "vk_subscribe",
+      text_formats: ["short"],
+    };
+  }
+  const normalizedTraffic = normalizeTrafficDestination(settings.trafficDestination);
+  const textFormats = pickFormatsFromSettings(settings);
+  return {
+    project_id: id,
+    model: settings.model ?? DEFAULTS.model,
+    count: settings.textCount ?? DEFAULTS.count,
+    length: lengthFromTextFormat(settings.textFormat),
+    text_format: settings.textFormat,
+    text_formats: textFormats,
+    traffic_destination: normalizedTraffic,
+    trafficDestination: normalizedTraffic,
+    customWishes: settings.customWishes ?? "",
+  };
+}
+
+function parseTextFormatsBody(raw: unknown): TextLength[] | null {
+  if (raw === undefined) return null;
+  if (!Array.isArray(raw)) return null;
+  const out: TextLength[] = [];
+  for (const item of raw) {
+    if (!isTextLength(item)) return null;
+    if (!out.includes(item)) out.push(item);
+  }
+  return out.length > 0 ? out : null;
 }
 
 export async function GET(_request: NextRequest, context: RouteContext) {
@@ -58,25 +85,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
   const { id } = await context.params;
   try {
     const settings = await getProjectSettings(id);
-    if (!settings) {
-      return NextResponse.json({
-        project_id: id,
-        model: DEFAULTS.model,
-        count: DEFAULTS.count,
-        length: DEFAULTS.length,
-        traffic_destination: "vk_subscribe",
-        trafficDestination: "vk_subscribe",
-      });
-    }
-    const normalizedTraffic = normalizeTrafficDestination(settings.trafficDestination);
-    return NextResponse.json({
-      project_id: id,
-      model: settings.model ?? DEFAULTS.model,
-      count: settings.textCount ?? DEFAULTS.count,
-      length: lengthFromTextFormat(settings.textFormat),
-      traffic_destination: normalizedTraffic,
-      trafficDestination: normalizedTraffic,
-    });
+    return NextResponse.json(settingsToApiJson(id, settings));
   } catch (e) {
     console.error("[GET /api/projects/:id/settings]", e);
     const message =
@@ -104,10 +113,20 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   }
 
   const b = (body ?? {}) as Record<string, unknown>;
-  const fields: Record<string, unknown> = {};
-  if (b.model !== undefined) fields.model = b.model;
-  if (b.count !== undefined) fields.textCount = b.count;
-  if (b.length !== undefined) {
+  const fields: Partial<GenerationSettings> = {};
+  if (b.model !== undefined) fields.model = b.model as GenerationSettings["model"];
+  if (b.count !== undefined) fields.textCount = b.count as number;
+
+  if (b.text_formats !== undefined) {
+    const parsed = parseTextFormatsBody(b.text_formats);
+    if (!parsed) {
+      return NextResponse.json(
+        { error: "Некорректное значение text_formats" },
+        { status: 400 }
+      );
+    }
+    fields.textFormats = parsed;
+  } else if (b.length !== undefined) {
     const len = b.length;
     if (typeof len !== "string" || !ALLOWED_LENGTH.has(len)) {
       return NextResponse.json(
@@ -115,8 +134,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         { status: 400 }
       );
     }
-    fields.textFormat = textFormatFromLength(len);
+    if (len === "micro") fields.textFormats = ["micro"];
+    else if (len === "short") fields.textFormats = ["short"];
+    else if (len === "long") fields.textFormats = ["long"];
+    else if (len === "mixed") fields.textFormats = ["short", "long"];
   }
+
   if (b.trafficDestination !== undefined) {
     const rawTraffic = b.trafficDestination;
     if (typeof rawTraffic !== "string") {
@@ -142,27 +165,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   if (Object.keys(fields).length === 0) {
     try {
       const current = await getProjectSettings(id);
-      return NextResponse.json(
-        current
-          ? {
-              project_id: id,
-              model: current.model ?? DEFAULTS.model,
-              count: current.textCount ?? DEFAULTS.count,
-              length: lengthFromTextFormat(current.textFormat),
-              traffic_destination: normalizeTrafficDestination(
-                current.trafficDestination
-              ),
-              trafficDestination: normalizeTrafficDestination(
-                current.trafficDestination
-              ),
-            }
-          : {
-              project_id: id,
-              ...DEFAULTS,
-              traffic_destination: "vk_subscribe",
-              trafficDestination: "vk_subscribe",
-            }
-      );
+      return NextResponse.json(settingsToApiJson(id, current));
     } catch (e) {
       console.error("[PATCH /api/projects/:id/settings] getProjectSettings failed", e);
       const message =
@@ -172,19 +175,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   }
 
   try {
-    // Значения trafficDestination/customWishes остаются как есть (merge сделает queries.ts).
-    const updated = await upsertProjectSettings(
-      id,
-      fields as Partial<GenerationSettings>
-    );
-    return NextResponse.json({
-      project_id: id,
-      model: updated.model ?? DEFAULTS.model,
-      count: updated.textCount ?? DEFAULTS.count,
-      length: lengthFromTextFormat(updated.textFormat),
-      traffic_destination: normalizeTrafficDestination(updated.trafficDestination),
-      trafficDestination: normalizeTrafficDestination(updated.trafficDestination),
-    });
+    const updated = await upsertProjectSettings(id, fields);
+    return NextResponse.json(settingsToApiJson(id, updated));
   } catch (e) {
     console.error("[PATCH /api/projects/:id/settings]", e);
     const message =
@@ -192,4 +184,3 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
-

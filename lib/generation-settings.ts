@@ -33,11 +33,15 @@ export type TrafficDestination =
   | "marketplace"
   | "avito";
 
+/** @deprecated legacy single format — используйте textFormats */
 export type TextFormat = "micro" | "short" | "long" | "mixed";
 
 export type GenerationSettings = {
   trafficDestination: TrafficDestination;
+  /** @deprecated legacy — читается только если textFormats пуст */
   textFormat: TextFormat;
+  /** Выбранные длины текстов (1–3 значения) */
+  textFormats?: ("micro" | "short" | "long")[] | null;
   textCount: number;
   customWishes: string;
   model?: ClaudeModel;
@@ -57,6 +61,7 @@ export const TRAFFIC_OPTIONS: Array<{
   { value: "avito", label: "Авито" },
 ];
 
+/** @deprecated — для configure используйте TEXT_LENGTH_OPTIONS из lib/text-formats */
 export const TEXT_FORMAT_OPTIONS: Array<{
   value: TextFormat;
   label: string;
@@ -69,7 +74,6 @@ export const TEXT_FORMAT_OPTIONS: Array<{
   },
   { value: "short", label: "Короткие (300–500 символов)" },
   { value: "long", label: "Длинные (700–1200 символов)" },
-  { value: "mixed", label: "Микс (и короткие, и длинные)" },
 ];
 
 export function trafficDestinationLabel(value: string): string {

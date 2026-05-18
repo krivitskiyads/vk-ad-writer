@@ -19,6 +19,8 @@ import {
 } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { productLabelForModel } from "@/lib/model-options";
+import { pickFormatsFromSettings, textLengthLabel } from "@/lib/text-formats";
+import { buildTextsDownloadFilename } from "@/lib/texts-download-filename";
 import type { Project } from "@/lib/types/project";
 import type { GeneratedTextBatch } from "@/lib/types/generated-texts";
 import type { GenerationSettings } from "@/lib/generation-settings";
@@ -33,13 +35,6 @@ type Props = {
   workspaceProjectsHref: string;
 };
 
-function lengthLabel(tf: string | null | undefined): string {
-  if (tf === "micro") return "Микро";
-  if (tf === "short") return "Короткий";
-  if (tf === "long") return "Длинный";
-  if (tf === "mixed") return "Микс";
-  return "Средний";
-}
 
 function formatTextBlock(t: any): string {
   return `${t.headline}\n\n${t.body}\n\n${t.cta}\n\nКнопка: ${t.cta_button}`;
@@ -89,12 +84,15 @@ export function ProjectTextsTab({
     return {
       model: s?.model ?? "claude-sonnet-4-6",
       count: typeof s?.textCount === "number" && s.textCount > 0 ? s.textCount : 5,
-      textFormat: s?.textFormat ?? "mixed",
+      textFormats: s
+        ? pickFormatsFromSettings(s)
+        : (["short"] as const),
     };
   }, [settings]);
 
   const settingsLabel = useMemo(() => {
-    return `Будет использовано: модель ${productLabelForModel(effectiveSettings.model)}, ${effectiveSettings.count} текстов, длина ${lengthLabel(effectiveSettings.textFormat)}`;
+    const lengths = effectiveSettings.textFormats.map(textLengthLabel).join(", ");
+    return `Будет использовано: модель ${productLabelForModel(effectiveSettings.model)}, ${effectiveSettings.count} текстов, длина: ${lengths}`;
   }, [effectiveSettings]);
 
   useEffect(() => {
@@ -161,6 +159,23 @@ export function ProjectTextsTab({
     });
   };
 
+  const toggleBatchSelection = (batchId: string) => {
+    const batch = batches.find((b) => b.id === batchId);
+    if (!batch) return;
+    const ids = (batch.texts ?? []).map((_, i) => textKey(batchId, i));
+    if (ids.length === 0) return;
+    setSelectedIds((prev) => {
+      const allSelected = ids.every((id) => prev.has(id));
+      const next = new Set(prev);
+      if (allSelected) {
+        ids.forEach((id) => next.delete(id));
+      } else {
+        ids.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  };
+
   const collectSelected = (): string[] => {
     const out: string[] = [];
     for (const b of batches) {
@@ -191,11 +206,29 @@ export function ProjectTextsTab({
       toast("Ничего не выбрано");
       return;
     }
+
+    const batchIdsWithSelection = new Set<string>();
+    for (const b of batches) {
+      (b.texts ?? []).forEach((_, i) => {
+        if (selectedIds.has(textKey(b.id, i))) batchIdsWithSelection.add(b.id);
+      });
+    }
+    const batchNumbers = batches
+      .filter((b) => batchIdsWithSelection.has(b.id))
+      .map((b) => b.batch_number)
+      .filter((n): n is number => typeof n === "number");
+
+    const filename = buildTextsDownloadFilename(
+      project.name,
+      blocks.length,
+      batchNumbers
+    );
+
     const blob = new Blob([blocks.join("\n\n═══\n\n")], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `project-texts-${projectId.slice(0, 8)}.txt`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -295,6 +328,7 @@ export function ProjectTextsTab({
                 defaultOpen={i === 0 && !isGeneratingFromConfigure}
                 selectedTextIds={selectedIds}
                 onToggleText={toggleText}
+                onToggleBatchSelection={toggleBatchSelection}
                 onRefresh={refresh}
               />
             ))}

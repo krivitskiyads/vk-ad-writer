@@ -21,7 +21,10 @@ import {
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
-import { TEXT_FORMAT_OPTIONS } from "@/lib/generation-settings";
+import {
+  TEXT_LENGTH_OPTIONS,
+  type TextLength,
+} from "@/lib/text-formats";
 import {
   PRODUCT_MODEL_OPTIONS,
   type ModelPresetId,
@@ -41,14 +44,16 @@ type ApiSettings = {
   project_id: string;
   model: string;
   count: number;
-  length: "micro" | "short" | "long" | "mixed";
+  text_formats: TextLength[];
+  hasPersistedTextFormats?: boolean;
   trafficDestination?: string;
   customWishes?: string;
 };
 
 type ModelId = "fast" | "optimal" | "max";
-type LengthId = "micro" | "short" | "long" | "mixed";
 type TrafficDestinationId = TrafficDestination;
+
+const LENGTH_ORDER: TextLength[] = ["micro", "short", "long"];
 
 const SAVE_DEBOUNCE_MS = 600;
 const TECH_SAVE_DEBOUNCE_MS = 500;
@@ -133,7 +138,7 @@ export function ProjectConfigureTab({
       project_id: projectId,
       model: "claude-sonnet-4-6",
       count: 5,
-      length: "mixed",
+      text_formats: ["short", "long"],
       customWishes: "",
     }),
     [projectId]
@@ -142,7 +147,9 @@ export function ProjectConfigureTab({
   const init = initialSettings ?? defaults;
   const [modelId, setModelId] = useState<ModelId>(() => modelIdFromString(init.model));
   const [count, setCount] = useState(() => clamp(init.count ?? 5, 1, 10));
-  const [length, setLength] = useState<LengthId>(() => init.length ?? "mixed");
+  const [textFormats, setTextFormats] = useState<TextLength[]>(() =>
+    init.text_formats?.length ? [...init.text_formats] : ["short", "long"]
+  );
   const [trafficId, setTrafficId] = useState<TrafficDestinationId>(() =>
     trafficIdFromString(init.trafficDestination)
   );
@@ -152,6 +159,7 @@ export function ProjectConfigureTab({
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialMount = useRef(true);
+  const legacyMigrated = useRef(false);
 
   const generationCtx = useProjectGenerationOptional();
 
@@ -177,7 +185,25 @@ export function ProjectConfigureTab({
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelId, count, length, wishes]);
+  }, [modelId, count, textFormats, wishes]);
+
+  useEffect(() => {
+    if (legacyMigrated.current) return;
+    if (initialSettings?.hasPersistedTextFormats) {
+      legacyMigrated.current = true;
+      return;
+    }
+    if (textFormats.length === 0) return;
+    legacyMigrated.current = true;
+    void fetch(`/api/projects/${projectId}/settings`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text_formats: textFormats }),
+    }).then((res) => {
+      if (res.ok) router.refresh();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const persist = async () => {
     setSaving(true);
@@ -188,7 +214,7 @@ export function ProjectConfigureTab({
         body: JSON.stringify({
           model: MODEL_BY_ID[modelId],
           count,
-          length,
+          text_formats: textFormats,
           customWishes: wishes,
         }),
       });
@@ -276,7 +302,22 @@ export function ProjectConfigureTab({
     schedulePersistTechniques(ai);
   };
 
+  const toggleTextLength = (id: TextLength) => {
+    setTextFormats((prev) => {
+      if (prev.includes(id)) {
+        return prev.filter((x) => x !== id);
+      }
+      return [...prev, id].sort(
+        (a, b) => LENGTH_ORDER.indexOf(a) - LENGTH_ORDER.indexOf(b)
+      );
+    });
+  };
+
   const runGenerate = () => {
+    if (textFormats.length === 0) {
+      toast.error("Выберите хотя бы одну длину текстов");
+      return;
+    }
     if (selectedSegments.length === 0) {
       toast.error("Выберите сегменты на вкладке «Анализ»");
       return;
@@ -395,35 +436,47 @@ export function ProjectConfigureTab({
             <CardDescription>Длина основного текста объявления</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <RadioGroup
-              value={length}
-              onValueChange={(v) => setLength(v as LengthId)}
-              className="grid gap-2"
-            >
-              {TEXT_FORMAT_OPTIONS.map((opt) => (
-                <label
-                  key={opt.value}
-                  className={radioRowClass(length === opt.value)}
-                >
-                  <RadioGroupItem
-                    value={opt.value}
-                    className={radioItemClass()}
-                  />
-                  <div className="min-w-0">
-                    <span className="text-sm">{opt.label}</span>
-                    {opt.hint ? (
-                      <p className="text-muted-foreground text-xs">{opt.hint}</p>
-                    ) : null}
-                  </div>
-                </label>
-              ))}
-            </RadioGroup>
-            {length === "mixed" && (
+            <div className="grid gap-2">
+              {TEXT_LENGTH_OPTIONS.map((opt) => {
+                const selected = textFormats.includes(opt.value);
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => toggleTextLength(opt.value)}
+                    className={cn(radioRowClass(selected), "w-full text-left")}
+                  >
+                    <span
+                      className={cn(
+                        "flex size-4 shrink-0 items-center justify-center rounded-[4px] border border-input",
+                        selected && "border-violet-600 bg-violet-600 text-white"
+                      )}
+                      aria-hidden
+                    >
+                      {selected ? <Check className="size-3" /> : null}
+                    </span>
+                    <div className="min-w-0">
+                      <span className="text-sm">{opt.label}</span>
+                      {opt.hint ? (
+                        <p className="text-muted-foreground text-xs">{opt.hint}</p>
+                      ) : null}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            {textFormats.length === 0 ? (
+              <p className="text-destructive text-xs">Выберите хотя бы одну длину</p>
+            ) : textFormats.length > 1 ? (
               <p className="text-muted-foreground text-xs">
-                Нейросеть сама подбирает длину под каждый текст — где-то короче,
-                где-то развёрнуто
+                При генерации длины чередуются:{" "}
+                {textFormats
+                  .map(
+                    (f) => TEXT_LENGTH_OPTIONS.find((o) => o.value === f)?.label ?? f
+                  )
+                  .join(" → ")}
               </p>
-            )}
+            ) : null}
           </CardContent>
         </Card>
 
@@ -575,7 +628,9 @@ export function ProjectConfigureTab({
           <Button
             type="button"
             size="lg"
-            disabled={selectedSegments.length === 0 || !analysisState}
+            disabled={
+              selectedSegments.length === 0 || !analysisState || textFormats.length === 0
+            }
             className="min-w-[200px] gap-2 bg-violet-600 text-white hover:bg-violet-700"
             onClick={runGenerate}
           >

@@ -1,18 +1,9 @@
 import { notFound } from "next/navigation";
 
 import { ProjectConfigureTab } from "@/components/project-configure-tab";
+import { pickFormatsFromSettings } from "@/lib/text-formats";
 import { getProject, getProjectSettings } from "@/lib/supabase/queries";
 import { getWorkspaceBySlug } from "@/lib/supabase/workspaces";
-
-function mapStoredTextFormat(
-  tf: string | undefined
-): "micro" | "short" | "long" | "mixed" {
-  if (tf === "micro") return "micro";
-  if (tf === "short") return "short";
-  if (tf === "long") return "long";
-  if (tf === "mixed") return "mixed";
-  return "mixed";
-}
 
 export default async function WorkspaceProjectConfigurePage({
   params,
@@ -42,7 +33,10 @@ export default async function WorkspaceProjectConfigurePage({
               project_id: id,
               model: settings.model ?? "claude-sonnet-4-6",
               count: settings.textCount ?? 5,
-              length: mapStoredTextFormat(settings.textFormat),
+              text_formats: pickFormatsFromSettings(settings),
+              hasPersistedTextFormats: Boolean(
+                settings.textFormats && settings.textFormats.length > 0
+              ),
               trafficDestination: settings.trafficDestination,
               customWishes: settings.customWishes ?? "",
             }

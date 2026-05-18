@@ -3,6 +3,7 @@ import type {
   GenerationSettings,
   TextFormat,
 } from "@/lib/generation-settings";
+import { parseTextFormatsArray } from "@/lib/text-formats";
 import {
   normalizeTrafficDestination,
   type TrafficDestination,
@@ -17,6 +18,7 @@ export function dbRowToGenerationSettings(
   const tf = (row.text_format ?? row.textFormat ?? "short") as string;
   const textFormat: TextFormat =
     tf === "micro" || tf === "long" || tf === "mixed" ? tf : "short";
+  const textFormats = parseTextFormatsArray(row.text_formats ?? row.textFormats);
   const td = normalizeTrafficDestination(
     (row.traffic_destination ?? row.trafficDestination ?? "vk_subscribe") as
       | string
@@ -35,6 +37,7 @@ export function dbRowToGenerationSettings(
   return {
     trafficDestination: td,
     textFormat,
+    textFormats,
     textCount,
     customWishes: rawWishes,
     model,
@@ -45,13 +48,16 @@ export function dbRowToGenerationSettings(
 export function generationSettingsToDbRow(
   s: GenerationSettings
 ): Record<string, unknown> {
-  return {
+  const row: Record<string, unknown> = {
     traffic_destination: s.trafficDestination,
-    text_format: s.textFormat,
     text_count: s.textCount,
     custom_wishes: s.customWishes ?? "",
     model: s.model ?? null,
   };
+  if (s.textFormats != null && s.textFormats.length > 0) {
+    row.text_formats = s.textFormats;
+  }
+  return row;
 }
 
 export function mergeGenerationSettings(
@@ -69,6 +75,8 @@ export function mergeGenerationSettings(
     trafficDestination:
       patch.trafficDestination ?? base.trafficDestination,
     textFormat: patch.textFormat ?? base.textFormat,
+    textFormats:
+      patch.textFormats !== undefined ? patch.textFormats : base.textFormats,
     textCount:
       typeof patch.textCount === "number" && Number.isFinite(patch.textCount)
         ? Math.min(10, Math.max(1, Math.floor(patch.textCount)))

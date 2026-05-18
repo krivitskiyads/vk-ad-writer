@@ -92,7 +92,7 @@ function formatGroup<T>(items: T[], formatter: (x: T) => string): string {
   return items.map(formatter).join("\n\n");
 }
 
-export type CopywriterTextFormat = "short" | "long" | "mixed" | "micro";
+export type CopywriterTextFormat = "short" | "long" | "micro";
 
 export function buildCopywriterSystemPrompt(
   knowledge: CopywriterKnowledge | null | undefined,
@@ -454,27 +454,12 @@ export function buildSingleTextUserPrompt(input: {
     totalTexts,
   } = input;
 
-  const lengthInstructions: Record<
-    "short" | "medium" | "long" | "mixed" | "micro",
-    string
-  > = {
+  const lengthInstructions: Record<CopywriterTextFormat, string> = {
     micro:
       "Длина: микро-формат — 80–200 символов всего. Только цепляющий заголовок (короткая фраза-крючок) и короткий призыв к действию. Без длинных описаний, историй и перечня выгод.",
     short: "Длина: короткий текст — 1-3 коротких абзаца, концентрированно",
-    medium: "Длина: средний текст — 4-6 абзацев, развёрнуто но без воды",
     long: "Длина: длинный текст — 7+ абзацев, детально с раскрытием боли и решения",
-    mixed:
-      "Длина: подбери оптимальную длину под конкретную боль и сегмент. Где-то достаточно 2 абзацев, где-то нужно 6-8. Решай сам — главное чтобы текст работал на конверсию.",
   };
-
-  const lengthKey: "short" | "medium" | "long" | "mixed" | "micro" =
-    textFormat === "micro"
-      ? "micro"
-      : textFormat === "short"
-        ? "short"
-        : textFormat === "long"
-          ? "long"
-          : "mixed";
 
   const techniqueInstruction = buildTechniqueInstruction(assignment);
 
@@ -497,7 +482,7 @@ export function buildSingleTextUserPrompt(input: {
     "",
     "ПАРАМЕТРЫ:",
     `- Куда ведём трафик: ${trafficDestination}`,
-    `- ${lengthInstructions[lengthKey]}`,
+    `- ${lengthInstructions[textFormat]}`,
     "",
     techniqueInstruction,
     "",

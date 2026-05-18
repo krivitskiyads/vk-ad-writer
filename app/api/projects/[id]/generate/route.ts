@@ -20,6 +20,7 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import type { AnalysisSegment, ProjectAnalysis } from "@/lib/types/project-analysis";
 import { toProjectAnalysis, withStableSegmentIds } from "@/lib/types/project-analysis";
 import type { GeneratedAdText } from "@/lib/types/generated-texts";
+import { pickFormatsFromSettings } from "@/lib/text-formats";
 import { writeUsageLog } from "@/lib/usage-log";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -177,7 +178,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const settings =
       (await getProjectSettings(projectId)) ?? {
         trafficDestination: "site",
-        textFormat: "mixed",
+        textFormat: "short",
+        textFormats: ["short"],
         textCount: 5,
         customWishes: "",
         model: DEFAULT_MODEL,
@@ -191,14 +193,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       typeof settings.textCount === "number" && settings.textCount > 0
         ? Math.min(10, Math.max(1, Math.floor(settings.textCount)))
         : 5;
-    const textFormatNorm: "short" | "long" | "mixed" | "micro" =
-      settings.textFormat === "long"
-        ? "long"
-        : settings.textFormat === "mixed"
-          ? "mixed"
-          : settings.textFormat === "micro"
-            ? "micro"
-            : "short";
+    const formatsList = pickFormatsFromSettings(settings);
     const model =
       typeof settings.model === "string" && settings.model.trim()
         ? settings.model.trim()
@@ -250,7 +245,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     const systemPrompt = buildCopywriterSystemPrompt(knowledgeForCopywriter, {
-      textFormat: textFormatNorm,
+      textFormat: formatsList.includes("micro") ? "micro" : undefined,
     });
 
     const analysisForPrompt: ProjectAnalysis = {
@@ -259,10 +254,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
     };
 
     const assignments = pickAssignments(knowledgeForCopywriter, textCount);
-    const formats = Array.from({ length: textCount }, () => {
-      if (textFormatNorm === "mixed") return "mixed";
-      return textFormatNorm;
-    });
+    const formats = Array.from(
+      { length: textCount },
+      (_, i) => formatsList[i % formatsList.length]
+    );
     const segmentAssignments = Array.from(
       { length: textCount },
       (_, i) => segments[i % segments.length]
@@ -273,7 +268,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         analysis: analysisForPrompt,
         segment: segmentAssignments[i],
         trafficDestination,
-        textFormat: formats[i] as "short" | "long" | "mixed" | "micro",
+        textFormat: formats[i],
         assignment: assignments[i],
         customWishes: augmentedWishes || undefined,
         textIndex: i + 1,
@@ -290,7 +285,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }).then(async ({ content, tokensUsed, timeMs, usage }) => {
         const text = content as GeneratedAdText | null;
         if (text && typeof text === "object" && "body" in text) {
-          text.text_format = (text.body?.length ?? 0) > 600 ? "long" : "short";
+          text.text_format = formats[i];
         }
         if (text) {
           try {
